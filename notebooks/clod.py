@@ -160,7 +160,7 @@ def create_spectral_matrices(spectra_data, wavelength_grid=None, fill_value=1.0)
 
         # Make weights / invvars
         invvar = 1. / flux_error ** 2
-        bad_pixels = np.isnan(flux) | np.isinf(flux)
+        bad_pixels = (np.isnan(flux) | np.isinf(flux)) | ((invvar < 1.) | np.isnan(invvar))
         if np.any(bad_pixels):
             spectra_with_bad_pixels += 1
             total_bad_pixels += np.sum(bad_pixels)
@@ -176,6 +176,7 @@ def create_spectral_matrices(spectra_data, wavelength_grid=None, fill_value=1.0)
     print(f"  Spectra with bad pixels: {spectra_with_bad_pixels}/{n_spectra}")
     print(f"  Total bad pixels: {total_bad_pixels}")
     print(f"  Bad pixels replaced with: {fill_value}")
+    print(f"  Bad weights (inverse variances) replaced with: {0}")
 
     return Y, wavelength_grid, source_ids, W
 
