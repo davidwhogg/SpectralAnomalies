@@ -27,7 +27,7 @@ def find_rvs_sources_gspphot(teff_min=4810, teff_max=6200,
     print(f"\nFound {len(sources)} sources matching criteria")
     return sources
 
-def download_rvs_spectrum(source_id, output_dir="rvs_spectra_cache"):
+def download_rvs_spectrum(source_id, output_dir="rvs_data_cache"):
     """
     Download RVS spectrum for a single source.
     Returns wavelength and flux arrays.
