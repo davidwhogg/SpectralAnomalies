@@ -69,8 +69,8 @@ class RHMF():
         - Checks convergence with the a-step only.
         """
         assert self.trained
-        assert jnp.all(np.isfinite(ystar))
-        assert jnp.all(np.isfinite(wstar))
+        assert jnp.all(jnp.isfinite(ystar))
+        assert jnp.all(jnp.isfinite(wstar))
         assert ystar.shape == (self.M, )
         assert wstar.shape == (self.M, )
         self.converged = False
