@@ -104,7 +104,7 @@ class RHMF():
 
     def objective(self):
         if self.A is None or self.G is None:
-            return jnp.Inf
+            return jnp.inf
         return jnp.sum(self.W * self.resid() ** 2)
 
     def one_star_objective(self, y, w, a):
