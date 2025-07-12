@@ -178,5 +178,5 @@ def create_spectral_matrices(spectra_data, wavelength_grid=None, fill_value=1.0)
     print(f"  Bad pixels replaced with: {fill_value}")
     print(f"  Bad weights (inverse variances) replaced with: {0}")
 
-    return Y, wavelength_grid, np.array(source_ids), W
+    return Y, wavelength_grid, np.array([f"{s:019d}" for s in source_ids]), W
 
