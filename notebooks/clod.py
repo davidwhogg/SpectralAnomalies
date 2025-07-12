@@ -1,3 +1,15 @@
+"""
+# clod.py
+Download, cache, and repackage ESA Gaia RVS spectra.
+
+## Authors:
+- **Claude**
+- **David W. Hogg** (NYU) (MPIA) (Flatiron)
+
+## License:
+Copyright 2025 the authors. This code is released for re-use under the open-source *MIT License*.
+"""
+
 import numpy as np
 from astroquery.gaia import Gaia
 from astropy.table import Table
