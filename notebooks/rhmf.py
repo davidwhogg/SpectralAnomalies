@@ -1,12 +1,14 @@
 """
 # Robust Heteroskedastic Matrix Factorization
-An iteratively reweighted least-squares version of HMF.
+An iteratively-reweighted-least-squares (IRLS) version of HMF.
 
 ## Author:
 - **David W. Hogg** (NYU) (MPIA) (Flatiron)
 
 ## License:
-Copyright 2025 the author. All code is licensed for re-use under the MIT License.
+Copyright 2025 the author.
+This code is licensed for re-use under the *MIT License*.
+See the file `LICENSE` for details.
 """
 
 import jax.numpy as jnp
