@@ -60,7 +60,7 @@ class SDSSLRGProcessor:
                     if chunk:
                         f.write(chunk)
                         downloaded += len(chunk)
-                        if total_size > 0:
+                        if np.random.uniform() < 0.01 and total_size > 0:
                             percent = (downloaded / total_size) * 100
                             print(f"\rDownloading spAll: {percent:.1f}%", end='', flush=True)
             
