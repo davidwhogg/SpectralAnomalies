@@ -265,7 +265,8 @@ class SDSSLRGProcessor:
         processed_spectra = {}
         
         for i, objid in enumerate(lrg_sample['objid']):
-            print(f"Processing {i+1}/{len(lrg_sample['objid'])}: {objid}")
+            if i % 100 == 0:
+                print(f"Processing {i+1}/{len(lrg_sample['objid'])}: {objid}")
             
             plate = lrg_sample['plate'][i]
             mjd = lrg_sample['mjd'][i]
