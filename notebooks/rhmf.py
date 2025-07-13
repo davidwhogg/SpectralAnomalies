@@ -163,7 +163,7 @@ class RHMF():
         self.A = jax.vmap(self._one_star_A_step)(self.Y, self.W).T
         bar = self.objective()
         if foo < bar:
-            print("_A_step(): ERROR: objective got worse", foo, bar)
+            print("_A_step(): WARNING: objective got worse", foo, bar)
 
     def _G_step(self):
         foo = self.objective()
