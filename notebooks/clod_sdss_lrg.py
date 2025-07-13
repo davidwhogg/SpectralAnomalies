@@ -27,8 +27,8 @@ class SDSSLRGProcessor:
         self.dr = dr
         
         # Common rest-frame wavelength grid (Angstroms)
-        self.rest_wave_grid = np.arange(3000, 8000, 1.0)
-        
+        self.rest_wave_grid = 10. ** np.arange(np.log10(2500.), np.log10(9000.), 0.0001)
+
         # SDSS base URL for spectra
         self.base_url = f"https://data.sdss.org/sas/{dr}/eboss/spectro/redux/"
         
@@ -78,12 +78,8 @@ class SDSSLRGProcessor:
         """
         # Download spAll file
         spall_file = self.download_spall()
-        if spall_file is None:
-            print("Could not download spAll file, using fallback sample")
-            return self._get_fallback_sample(max_objects, z_min, z_max)
         
         print("Loading spAll file and selecting LRGs...")
-        
         try:
             # Load the spAll file
             with fits.open(spall_file) as hdul:
@@ -98,8 +94,8 @@ class SDSSLRGProcessor:
                 (data['ZWARNING'] == 0) &  # No redshift warnings
                 (data['SN_MEDIAN_ALL'] > 2.0) &  # Decent S/N
                 # Additional LRG-like criteria (adjust as needed)
-                (data['MODELMAGG'] > 17.0) & (data['MODELMAGG'] < 19.2) &  # r-band magnitude
-                (data['MODELMAGR'] - data['MODELMAGI'] > 0.5)  # Red color cut
+                (data['MODELMAG'][:, 1] > 17.0) & (data['MODELMAG'][:, 1] < 19.2) &  # r-band magnitude
+                (data['MODELMAG'][:, 2] - data['MODELMAG'][:, 3] > 0.5)  # Red color cut
             )
             
             # Get LRG indices
@@ -109,9 +105,9 @@ class SDSSLRGProcessor:
                 print("No LRGs found with current criteria, using fallback")
                 return self._get_fallback_sample(max_objects, z_min, z_max)
             
-            # Randomly sample if we have too many
+            # Subsample if we have too many (take the most recent)
             if len(lrg_indices) > max_objects:
-                selected_indices = np.random.choice(lrg_indices, max_objects, replace=False)
+                selected_indices = lrg_indices[-max_objects:]
             else:
                 selected_indices = lrg_indices
             
@@ -121,50 +117,23 @@ class SDSSLRGProcessor:
                 'mjd': data['MJD'][selected_indices].tolist(),
                 'fiberid': data['FIBERID'][selected_indices].tolist(),
                 'z': data['Z'][selected_indices].tolist(),
-                'objid': [f"lrg_{i:04d}" for i in range(len(selected_indices))]
+                'objid': [f"{d['PLATE']:05d}-{d['MJD']:05d}-{d['FIBERID']:04d}" for d in data[selected_indices]]
             }
             
             print(f"Selected {len(selected_indices)} LRGs from spAll file")
-            print(f"Redshift range: {np.min(sample['z']):.3f} - {np.max(sample['z']):.3f}")
+            print(f"Empirical redshift range: {np.min(sample['z']):.3f} - {np.max(sample['z']):.3f}")
             
             return sample
             
         except Exception as e:
             print(f"Error processing spAll file: {e}")
-            return self._get_fallback_sample(max_objects, z_min, z_max)
-    
-    def _get_fallback_sample(self, max_objects, z_min, z_max):
-        """Fallback sample of known LRGs if spAll download fails"""
-        print("Using fallback LRG sample...")
-        
-        # Known good LRGs from early SDSS
-        real_lrgs = [
-            {'plate': 3586, 'mjd': 55182, 'fiberid': 1, 'z': 0.234, 'objid': 'lrg_0000'},
-            {'plate': 3586, 'mjd': 55182, 'fiberid': 2, 'z': 0.167, 'objid': 'lrg_0001'},
-            {'plate': 3586, 'mjd': 55182, 'fiberid': 3, 'z': 0.189, 'objid': 'lrg_0002'},
-            {'plate': 3587, 'mjd': 55182, 'fiberid': 1, 'z': 0.298, 'objid': 'lrg_0003'},
-            {'plate': 3587, 'mjd': 55182, 'fiberid': 2, 'z': 0.445, 'objid': 'lrg_0004'},
-        ]
-        
-        # Filter by redshift range and limit number
-        filtered_lrgs = [lrg for lrg in real_lrgs if z_min <= lrg['z'] <= z_max]
-        n_obj = min(max_objects, len(filtered_lrgs))
-        
-        sample = {
-            'plate': [lrg['plate'] for lrg in filtered_lrgs[:n_obj]],
-            'mjd': [lrg['mjd'] for lrg in filtered_lrgs[:n_obj]],
-            'fiberid': [lrg['fiberid'] for lrg in filtered_lrgs[:n_obj]],
-            'z': [lrg['z'] for lrg in filtered_lrgs[:n_obj]],
-            'objid': [lrg['objid'] for lrg in filtered_lrgs[:n_obj]]
-        }
-        
-        return sample
+            assert False
     
     def get_spectrum_url(self, plate, mjd, fiberid):
         """Construct URL for SDSS spectrum file"""
         run2d = "v5_13_0"  # Common run2d version for DR16
         filename = f"spec-{plate:04d}-{mjd}-{fiberid:04d}.fits"
-        url = f"{self.base_url}{run2d}/spectra/{plate:04d}/{filename}"
+        url = f"{self.base_url}{run2d}/spectra/full/{plate:04d}/{filename}"
         return url
     
     def download_spectrum(self, plate, mjd, fiberid, objid):
@@ -173,7 +142,6 @@ class SDSSLRGProcessor:
         
         # Check if already cached
         if cache_file.exists():
-            print(f"Loading cached spectrum for {objid}")
             return str(cache_file)
         
         # Download spectrum
@@ -188,7 +156,6 @@ class SDSSLRGProcessor:
             with open(cache_file, 'wb') as f:
                 f.write(response.content)
             
-            print(f"Successfully downloaded and cached {objid}")
             time.sleep(0.1)  # Be nice to SDSS servers
             return str(cache_file)
             
@@ -208,13 +175,9 @@ class SDSSLRGProcessor:
                 # Convert log-lambda to linear wavelength
                 wave = 10**loglam
                 
-                # Calculate errors from inverse variance
-                error = np.where(ivar > 0, 1.0/np.sqrt(ivar), np.inf)
-                
                 return {
                     'wavelength': wave,
                     'flux': flux,
-                    'error': error,
                     'ivar': ivar
                 }
         except Exception as e:
@@ -225,20 +188,19 @@ class SDSSLRGProcessor:
         """Process spectrum to rest-frame and common wavelength grid"""
         wave = spectrum_data['wavelength']
         flux = spectrum_data['flux']
-        error = spectrum_data['error']
+        ivar = spectrum_data['ivar']
         
         # Convert to rest-frame wavelength
         rest_wave = wave / (1 + redshift)
         
         # Apply flux correction for redshift
         rest_flux = flux * (1 + redshift)
-        rest_error = error * (1 + redshift)
+        rest_ivar = ivar / (1 + redshift) ** 2
         
         # Create mask for valid data
         valid_mask = (
             np.isfinite(rest_flux) & 
-            np.isfinite(rest_error) & 
-            (rest_error > 0) & 
+            (rest_ivar > 0.) & 
             (rest_wave >= self.rest_wave_grid.min()) & 
             (rest_wave <= self.rest_wave_grid.max())
         )
@@ -249,41 +211,35 @@ class SDSSLRGProcessor:
         
         # Interpolate to common wavelength grid
         try:
-            # Use cubic spline interpolation for flux and error
+            # Use cubic spline interpolation for flux
             f_interp = interp1d(
                 rest_wave[valid_mask], 
                 rest_flux[valid_mask], 
                 kind='cubic',
                 bounds_error=False,
-                fill_value=np.nan
+                fill_value=0.
             )
             
-            e_interp = interp1d(
-                rest_wave[valid_mask], 
-                rest_error[valid_mask], 
-                kind='cubic',
-                bounds_error=False,
-                fill_value=np.nan
-            )
-            
-            # Use linear interpolation for inverse variance (more appropriate for weights)
+            # Use nearest-neighbor interpolation for inverse variance (more appropriate for weights)
             ivar_interp = interp1d(
                 rest_wave[valid_mask],
                 spectrum_data['ivar'][valid_mask],
-                kind='linear',
+                kind='nearest',
                 bounds_error=False,
-                fill_value=0.0  # Use 0 for invalid regions (infinite error)
+                fill_value=0.  # Use 0 for invalid regions (infinite error)
             )
-            
+
             # Interpolate to common grid
             interp_flux = f_interp(self.rest_wave_grid)
-            interp_error = e_interp(self.rest_wave_grid)
             interp_ivar = ivar_interp(self.rest_wave_grid)
             
+            # Do one more conservative thing with the ivars.
+            interp_ivar = np.minimum(interp_ivar, np.roll(interp_ivar, 1))
+            interp_ivar = np.minimum(interp_ivar, np.roll(interp_ivar, -1))
+
             return {
                 'wavelength': self.rest_wave_grid.copy(),
                 'flux': interp_flux,
-                'error': interp_error,
                 'ivar': interp_ivar,
                 'redshift': redshift
             }
@@ -333,7 +289,6 @@ class SDSSLRGProcessor:
             
             if processed is not None:
                 processed_spectra[objid] = processed
-                print(f"Successfully processed {objid}")
             else:
                 print(f"Failed to process {objid}")
         
