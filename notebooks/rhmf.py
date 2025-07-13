@@ -25,7 +25,7 @@ class RHMF():
         self.tol = tol
         self.trained = False
 
-    def train(self, data, weights):
+    def train(self, data, weights, maxiter=jnp.inf):
         """
         # inputs:
         `data`:     (N, M) array of observations.
@@ -51,10 +51,16 @@ class RHMF():
             self._affine()
             self._update_W()
             self.n_iter += 1
+            if not self._all_tests_pass():
+                print("train(): WARNING: failed tests after iteration", self.n_iter)
+                self.converged = True
             if self.n_iter % 100 == 0:
                 print("train(): after iteration", self.n_iter, ":",
                       self.objective(), self.original_objective())
-        print("train(): converged at iteration", self.n_iter, ":",
+            if self.n_iter >= maxiter:
+                print("train(): WARNING: stopping at maximum iteration, not true convergence")
+                self.converged = True
+        print("train(): finished at iteration", self.n_iter, ":",
               self.objective(), self.original_objective())
         self.trained = True
 
@@ -182,3 +188,19 @@ class RHMF():
 
     def _update_one_star_W(self, y, w, a):
         return w * self.Q2 / (w * self.one_star_resid(y, a) ** 2 + self.Q2)
+
+    def _all_tests_pass(self):
+        boo = True
+        foo = jnp.sum(jnp.isnan(self.A))
+        if foo > 0:
+            print(f"WARNING: {foo} elements of A matrix went bad", flush=True)
+            boo = False
+        foo = jnp.sum(jnp.isnan(self.G))
+        if foo > 0:
+            print(f"WARNING: {foo} elements of G matrix went bad", flush=True)
+            boo = False
+        foo = jnp.sum(jnp.isnan(self.W))
+        if foo > 0:
+            print(f"WARNING: {foo} elements of W matrix went bad", flush=True)
+            boo = False
+        return boo
