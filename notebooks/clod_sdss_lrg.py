@@ -71,7 +71,7 @@ class SDSSLRGProcessor:
             print(f"Failed to download spAll file: {e}")
             return None
     
-    def get_lrg_sample(self, max_objects=100, z_min=0.15, z_max=0.7):
+    def get_lrg_sample(self, max_objects, z_min, z_max):
         """
         Get a sample of real LRG objects from SDSS spAll file.
         This queries the actual SDSS spectroscopic database.
@@ -248,7 +248,7 @@ class SDSSLRGProcessor:
             print(f"Error interpolating spectrum: {e}")
             return None
     
-    def process_lrg_sample(self, max_objects=100, force_reprocess=False):
+    def process_lrg_sample(self, max_objects=100, z_min=0.2, z_max=0.5, force_reprocess=False):
         """Process entire LRG sample with caching"""
         
         # Check if processed data exists
@@ -260,12 +260,12 @@ class SDSSLRGProcessor:
         print("Processing LRG sample...")
         
         # Get LRG sample
-        lrg_sample = self.get_lrg_sample(max_objects)
+        lrg_sample = self.get_lrg_sample(max_objects, z_min, z_max)
         
         processed_spectra = {}
         
         for i, objid in enumerate(lrg_sample['objid']):
-            if i % 100 == 0:
+            if i % 50 == 0:
                 print(f"Processing {i+1}/{len(lrg_sample['objid'])}: {objid}")
             
             plate = lrg_sample['plate'][i]
