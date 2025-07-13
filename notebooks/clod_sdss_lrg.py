@@ -144,7 +144,7 @@ class SDSSLRGProcessor:
         
         # Interpolate to common wavelength grid
         try:
-            # Use cubic spline interpolation
+            # Use cubic spline interpolation for flux and error
             f_interp = interp1d(
                 rest_wave[valid_mask], 
                 rest_flux[valid_mask], 
@@ -161,14 +161,25 @@ class SDSSLRGProcessor:
                 fill_value=np.nan
             )
             
+            # Use linear interpolation for inverse variance (more appropriate for weights)
+            ivar_interp = interp1d(
+                rest_wave[valid_mask],
+                spectrum_data['ivar'][valid_mask],
+                kind='linear',
+                bounds_error=False,
+                fill_value=0.0  # Use 0 for invalid regions (infinite error)
+            )
+            
             # Interpolate to common grid
             interp_flux = f_interp(self.rest_wave_grid)
             interp_error = e_interp(self.rest_wave_grid)
+            interp_ivar = ivar_interp(self.rest_wave_grid)
             
             return {
                 'wavelength': self.rest_wave_grid.copy(),
                 'flux': interp_flux,
                 'error': interp_error,
+                'ivar': interp_ivar,
                 'redshift': redshift
             }
             
