@@ -26,8 +26,8 @@ class SDSSLRGProcessor:
         self.cache_dir.mkdir(exist_ok=True)
         self.dr = dr
         
-        # Common rest-frame wavelength grid (Angstroms)
-        self.rest_wave_grid = 10. ** np.arange(np.log10(2500.), np.log10(9000.), 0.0001)
+        # Common rest-frame wavelength grid (Angstroms) MAGIC NUMBERS
+        self.rest_wave_grid = 10. ** np.arange(np.log10(3000.), np.log10(7500.), 0.0001)
 
         # SDSS base URL for spectra
         self.base_url = f"https://data.sdss.org/sas/{dr}/eboss/spectro/redux/"
@@ -92,36 +92,43 @@ class SDSSLRGProcessor:
                 (data['Z'] > z_min) & (data['Z'] < z_max) &
                 (data['Z_ERR'] > 0) & (data['Z_ERR'] < 0.001) &  # Very good redshift quality; too good?
                 (data['ZWARNING'] == 0) # No redshift warnings
-                # & (data['SN_MEDIAN'] > 3.0)  # Decent S/N
+                & (data['SN_MEDIAN_ALL'] > 4.0)  # Decent S/N
                 # Additional LRG-like criteria (adjust as needed)
                 # & (data['MODELMAG'][:, 1] > 17.0) & (data['MODELMAG'][:, 1] < 19.2)  # r-band magnitude
                 # & (data['MODELMAG'][:, 2] - data['MODELMAG'][:, 3] > 0.5)  # Red color cut
             )
             
-            # Get LRG indices
+            # Get LRG indices and shorten the data immediately
             lrg_indices = np.where(lrg_mask)[0]
-            
             if len(lrg_indices) == 0:
                 print("No LRGs found with current criteria, using fallback")
                 return self._get_fallback_sample(max_objects, z_min, z_max)
+            data = data[lrg_indices]
+            
+            # Make identifier strings
+            objids = np.array([f"{d['PLATE']:05d}-{d['FIBERID']:04d}-{d['MJD']:05d}" for d in data])
+
+            # Order by a silly but reproducible fact
+            dijbos = np.array([o[::-1] for o in objids])
+            I = np.argsort(dijbos)
+            data = data[I]
+            objids = objids[I]
             
             # Subsample if we have too many
-            selected_indices = lrg_indices
-            if len(lrg_indices) > max_objects:
-                rng = np.random.default_rng(17)
-                ii = np.argsort(rng.uniform(size=len(selected_indices)))
-                selected_indices = lrg_indices[ii[:max_objects]]
+            if len(data) > max_objects:
+                data = data[:max_objects]
+                objids = objids[:max_objects]
             
             # Extract the data
             sample = {
-                'plate': data['PLATE'][selected_indices].tolist(),
-                'mjd': data['MJD'][selected_indices].tolist(),
-                'fiberid': data['FIBERID'][selected_indices].tolist(),
-                'z': data['Z'][selected_indices].tolist(),
-                'objid': [f"{d['PLATE']:05d}-{d['MJD']:05d}-{d['FIBERID']:04d}" for d in data[selected_indices]]
+                'plate': data['PLATE'].tolist(),
+                'mjd': data['MJD'].tolist(),
+                'fiberid': data['FIBERID'].tolist(),
+                'z': data['Z'].tolist(),
+                'objid': objids.tolist()
             }
             
-            print(f"Selected {len(selected_indices)} LRGs from spAll file")
+            print(f"Selected {len(data)} LRGs from spAll file")
             print(f"Empirical redshift range: {np.min(sample['z']):.3f} - {np.max(sample['z']):.3f}")
             
             return sample
@@ -200,7 +207,7 @@ class SDSSLRGProcessor:
         
         # Create mask for valid data
         foo = np.nanmedian(flux)
-        tiny = 0.001 / foo ** 2
+        tiny = 0.01 / foo ** 2
         valid_mask = (
             np.isfinite(rest_flux) & 
             (rest_ivar > tiny) & 
@@ -208,7 +215,7 @@ class SDSSLRGProcessor:
             (rest_wave <= self.rest_wave_grid.max())
         )
         
-        if np.sum(valid_mask) < 1000:
+        if np.sum(valid_mask) < 2000:
             print("Not enough valid data points for interpolation")
             return None
         
