@@ -16,7 +16,7 @@ import jax
 jax.config.update("jax_enable_x64", True)
 
 class RHMF():
-    def __init__(self, rank, nsigma, A=None, G=None, tol=1.e-4):
+    def __init__(self, rank, nsigma, A=None, G=None, tol=1.e-5):
         self.K = int(rank)
         self.nsigma = float(nsigma)
         self.Q2 = self.nsigma ** 2

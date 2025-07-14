@@ -200,7 +200,7 @@ class SDSSLRGProcessor:
         
         # Create mask for valid data
         foo = np.nanmedian(flux)
-        tiny = 0.01 / foo ** 2
+        tiny = 0.001 / foo ** 2
         valid_mask = (
             np.isfinite(rest_flux) & 
             (rest_ivar > tiny) & 
@@ -229,7 +229,7 @@ class SDSSLRGProcessor:
                 spectrum_data['ivar'][valid_mask],
                 kind='nearest',
                 bounds_error=False,
-                fill_value=0.  # Use 0 for invalid regions (infinite error)
+                fill_value=tiny  # Use something nonzero for invalid regions (very large error)
             )
 
             # Interpolate to common grid
