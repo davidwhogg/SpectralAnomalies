@@ -69,7 +69,7 @@ class RHMF():
               self.objective(), self.original_objective())
         self.trained = True
 
-    def test(self, ystar, wstar):
+    def test(self, ystar, wstar, maxiter=100, verbose=False):
         """
         # inputs:
         `ystar`:     (M, ) array for one observation.
@@ -98,9 +98,13 @@ class RHMF():
                 self.converged = True
             w = self._update_one_star_W(ystar, wstar, a)
             self.n_iter += 1
-        print("test(): converged at iteration:", self.n_iter, ":",
-              self.one_star_objective(ystar, w, a),
-              self.one_star_objective(ystar, wstar, a))
+            if self.n_iter >= maxiter:
+                print("train(): WARNING: stopping at maximum iteration, not true convergence")
+                self.converged = True
+        if verbose:
+            print("test(): converged at iteration:", self.n_iter, ":",
+                  self.one_star_objective(ystar, w, a),
+                  self.one_star_objective(ystar, wstar, a))
         return self.one_star_synthesis(a)
 
     def synthesis(self):
