@@ -90,12 +90,12 @@ class SDSSLRGProcessor:
             lrg_mask = (
                 (data['CLASS'] == 'GALAXY') &
                 (data['Z'] >= z_min) & (data['Z'] <= z_max) &
-                (data['Z_ERR'] > 0) & (data['Z_ERR'] < 0.01) &  # Good redshift quality
-                (data['ZWARNING'] == 0) &  # No redshift warnings
-                (data['SN_MEDIAN_ALL'] > 2.0) &  # Decent S/N
+                (data['Z_ERR'] > 0) & (data['Z_ERR'] < 0.001) &  # Very good redshift quality; too good?
+                (data['ZWARNING'] == 0) # No redshift warnings
+                & (data['SN_MEDIAN_ALL'] > 2.0)  # Decent S/N
                 # Additional LRG-like criteria (adjust as needed)
-                (data['MODELMAG'][:, 1] > 17.0) & (data['MODELMAG'][:, 1] < 19.2) &  # r-band magnitude
-                (data['MODELMAG'][:, 2] - data['MODELMAG'][:, 3] > 0.5)  # Red color cut
+                # & (data['MODELMAG'][:, 1] > 17.0) & (data['MODELMAG'][:, 1] < 19.2)  # r-band magnitude
+                # & (data['MODELMAG'][:, 2] - data['MODELMAG'][:, 3] > 0.5)  # Red color cut
             )
             
             # Get LRG indices
@@ -248,7 +248,7 @@ class SDSSLRGProcessor:
             print(f"Error interpolating spectrum: {e}")
             return None
     
-    def process_lrg_sample(self, max_objects=100, z_min=0.2, z_max=0.5, force_reprocess=False):
+    def process_lrg_sample(self, max_objects=100, z_min=0.2, z_max=0.55, force_reprocess=False):
         """Process entire LRG sample with caching"""
         
         # Check if processed data exists
@@ -265,7 +265,7 @@ class SDSSLRGProcessor:
         processed_spectra = {}
         
         for i, objid in enumerate(lrg_sample['objid']):
-            if i % 50 == 0:
+            if i % 100 == 0:
                 print(f"Processing {i+1}/{len(lrg_sample['objid'])}: {objid}")
             
             plate = lrg_sample['plate'][i]
