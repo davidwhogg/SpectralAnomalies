@@ -9,6 +9,11 @@ An iteratively-reweighted-least-squares (IRLS) version of HMF.
 Copyright 2025 the author.
 This code is licensed for re-use under the *MIT License*.
 See the file `LICENSE` for details.
+
+## Bugs:
+- Needs a set of unit tests.
+- Needs a set of functional tests.
+- Not packaged into a proper package.
 """
 
 import jax.numpy as jnp
@@ -87,7 +92,7 @@ class RHMF():
         a = jnp.zeros(self.K)
         while not self.converged:
             foo = self.one_star_objective(ystar, w, a)
-            a = self._one_star_A_step(ystar, w)
+            a = self._one_element_step(self.G, ystar, w)
             bar = self.one_star_objective(ystar, w, a)
             if foo - bar < self.tol:
                 self.converged = True
@@ -148,29 +153,45 @@ class RHMF():
         assert self.A.shape == (self.K, self.N)
         assert self.G.shape == (self.K, self.M)
 
-    def _one_star_A_step(self, y1, w1):
-        XTCinvX = self.G * w1 @ self.G.T
-        XTCinvY = self.G * w1 @ y1
-        return jnp.linalg.solve(XTCinvX, XTCinvY)
-
-    def _one_star_G_step(self, y1, w1):
-        XTCinvX = self.A * w1 @ self.A.T
-        XTCinvY = self.A * w1 @ y1
-        return jnp.linalg.solve(XTCinvX, XTCinvY)
+    def _one_element_step(self, matrix, y1, w1):
+        return jnp.linalg.solve(matrix * w1 @ matrix.T,
+                                matrix * w1 @ y1)
 
     def _A_step(self):
+        """
+        ## notes:
+        - Works on residuals to reduce dynamic ranges for everything.
+          (It is not obvious that this helps with anything.)
+        """
         foo = self.objective()
-        self.A = jax.vmap(self._one_star_A_step)(self.Y, self.W).T
+        oldA = 1. * self.A # copy
+        dY = self.resid()
+        dA = jax.vmap(self._one_element_step, in_axes=(None, 0, 0))(self.G, dY, self.W).T
+        self.A += dA
         bar = self.objective()
         if foo < bar:
-            print("_A_step(): WARNING: objective got worse", foo, bar)
+            print("_A_step(): WARNING: objective got worse:", foo, bar)
+            self.A = 0.99 * oldA + 0.01 * self.A
+            bar = self.objective()
+            print("_A_step(): after revert-compromise:", foo, bar)
 
     def _G_step(self):
+        """
+        ## notes:
+        - Works on residuals to reduce dynamic ranges for everything.
+          (It is not obvious that this helps with anything.)
+        """
         foo = self.objective()
-        self.G = jax.vmap(self._one_star_G_step)(self.Y.T, self.W.T).T
+        oldG = 1. * self.G # copy
+        dY = self.resid()
+        dG = jax.vmap(self._one_element_step, in_axes=(None, 0, 0))(self.A, dY.T, self.W.T).T
+        self.G += dG
         bar = self.objective()
         if foo < bar:
-            print("_G_step(): ERROR: objective got worse", foo, bar)
+            print("_G_step(): WARNING: objective got worse:", foo, bar)
+            self.G = 0.99 * oldG + 0.01 * self.G
+            bar = self.objective()
+            print("_G_step(): after revert-compromise:", foo, bar)
         if foo - bar < self.tol:
             self.converged = True
 
