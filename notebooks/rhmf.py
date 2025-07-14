@@ -22,7 +22,6 @@ class RHMF():
         self.Q2 = self.nsigma ** 2
         self.A = A
         self.G = G
-        self.W = None
         self.tol = tol
         self.trained = False
 
@@ -130,8 +129,7 @@ class RHMF():
         # bugs:
         - Consider switching SVD to a fast PCA implementation?
         """
-        if self.W is None or self.W.shape != self.Y.shape:
-            self.W = 1. * self.input_W # copy not reference
+        self.W = 1. * self.input_W # copy not reference
         if self.A is None:
             if self.G is None:
                 print("_initialize(): initializing with an SVD")
