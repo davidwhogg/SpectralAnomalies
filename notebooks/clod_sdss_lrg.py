@@ -89,10 +89,10 @@ class SDSSLRGProcessor:
             # CLASS = 'GALAXY' and typical LRG color/magnitude cuts
             lrg_mask = (
                 (data['CLASS'] == 'GALAXY') &
-                (data['Z'] >= z_min) & (data['Z'] <= z_max) &
+                (data['Z'] > z_min) & (data['Z'] < z_max) &
                 (data['Z_ERR'] > 0) & (data['Z_ERR'] < 0.001) &  # Very good redshift quality; too good?
                 (data['ZWARNING'] == 0) # No redshift warnings
-                & (data['SN_MEDIAN_ALL'] > 2.0)  # Decent S/N
+                # & (data['SN_MEDIAN'] > 3.0)  # Decent S/N
                 # Additional LRG-like criteria (adjust as needed)
                 # & (data['MODELMAG'][:, 1] > 17.0) & (data['MODELMAG'][:, 1] < 19.2)  # r-band magnitude
                 # & (data['MODELMAG'][:, 2] - data['MODELMAG'][:, 3] > 0.5)  # Red color cut
@@ -105,11 +105,12 @@ class SDSSLRGProcessor:
                 print("No LRGs found with current criteria, using fallback")
                 return self._get_fallback_sample(max_objects, z_min, z_max)
             
-            # Subsample if we have too many (take the most recent)
+            # Subsample if we have too many
+            selected_indices = lrg_indices
             if len(lrg_indices) > max_objects:
-                selected_indices = lrg_indices[-max_objects:]
-            else:
-                selected_indices = lrg_indices
+                rng = np.random.default_rng(17)
+                ii = np.argsort(rng.uniform(size=len(selected_indices)))
+                selected_indices = lrg_indices[ii[:max_objects]]
             
             # Extract the data
             sample = {
