@@ -199,26 +199,28 @@ class SDSSLRGProcessor:
         rest_ivar = ivar / (1 + redshift) ** 2
         
         # Create mask for valid data
+        foo = np.nanmedian(flux)
+        tiny = 0.01 / foo ** 2
         valid_mask = (
             np.isfinite(rest_flux) & 
-            (rest_ivar > 0.) & 
+            (rest_ivar > tiny) & 
             (rest_wave >= self.rest_wave_grid.min()) & 
             (rest_wave <= self.rest_wave_grid.max())
         )
         
-        if np.sum(valid_mask) < 10:
+        if np.sum(valid_mask) < 1000:
             print("Not enough valid data points for interpolation")
             return None
         
         # Interpolate to common wavelength grid
         try:
-            # Use cubic spline interpolation for flux
+            # Use nearest interpolation -- this is INSANE
             f_interp = interp1d(
-                rest_wave[valid_mask], 
-                rest_flux[valid_mask], 
-                kind='cubic',
+                rest_wave[valid_mask],
+                rest_flux[valid_mask],
+                kind='nearest',
                 bounds_error=False,
-                fill_value=0.
+                fill_value=foo
             )
             
             # Use nearest-neighbor interpolation for inverse variance (more appropriate for weights)
