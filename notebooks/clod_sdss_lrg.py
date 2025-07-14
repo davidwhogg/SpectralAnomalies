@@ -27,7 +27,7 @@ class SDSSLRGProcessor:
         self.dr = dr
         
         # Common rest-frame wavelength grid (Angstroms) MAGIC NUMBERS
-        self.rest_wave_grid = 10. ** np.arange(np.log10(3000.), np.log10(7500.), 0.0001)
+        self.rest_wave_grid = 10. ** np.arange(np.log10(2900.), np.log10(7800.), 0.0001)
 
         # SDSS base URL for spectra
         self.base_url = f"https://data.sdss.org/sas/{dr}/eboss/spectro/redux/"
@@ -146,11 +146,13 @@ class SDSSLRGProcessor:
     
     def download_spectrum(self, plate, mjd, fiberid, objid):
         """Download and cache a single spectrum"""
-        cache_file = self.cache_dir / f"spec_{plate:04d}_{mjd}_{fiberid:04d}.fits"
+        cache_file = self.cache_dir / f"{plate:04d}/spec_{plate:04d}_{mjd}_{fiberid:04d}.fits"
         
         # Check if already cached
         if cache_file.exists():
             return str(cache_file)
+        else:
+            os.makedirs(self.cache_dir / f"{plate:04d}", exist_ok=True)
         
         # Download spectrum
         url = self.get_spectrum_url(plate, mjd, fiberid)
