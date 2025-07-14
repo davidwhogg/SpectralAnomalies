@@ -22,6 +22,7 @@ class RHMF():
         self.Q2 = self.nsigma ** 2
         self.A = A
         self.G = G
+        self.W = None
         self.tol = tol
         self.trained = False
 
@@ -55,7 +56,7 @@ class RHMF():
                 print("train(): WARNING: failed tests after iteration", self.n_iter)
                 self.converged = True
             if self.n_iter % 100 == 0:
-                print("train(): after iteration", self.n_iter, ":",
+                print(f"train(): after iteration {self.n_iter}:",
                       self.objective(), self.original_objective())
             if self.n_iter >= maxiter:
                 print("train(): WARNING: stopping at maximum iteration, not true convergence")
@@ -129,7 +130,8 @@ class RHMF():
         # bugs:
         - Consider switching SVD to a fast PCA implementation?
         """
-        self.W = 1. * self.input_W # copy not reference
+        if self.W is None or self.W.shape != self.Y.shape:
+            self.W = 1. * self.input_W # copy not reference
         if self.A is None:
             if self.G is None:
                 print("_initialize(): initializing with an SVD")
