@@ -51,10 +51,10 @@ class RHMF():
         self._initialize()
         print("train(): before starting:", self.objective(), self.original_objective())
         while not self.converged:
+            self._update_W()
             self._A_step()
             self._G_step()
             self._affine()
-            self._update_W()
             self.n_iter += 1
             if not self._all_tests_pass():
                 print("train(): WARNING: failed tests after iteration", self.n_iter)
