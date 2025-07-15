@@ -184,7 +184,7 @@ class RHMF():
         dY = self.resid()
         dG = jax.vmap(self._one_element_step, in_axes=(None, 0, 0))(self.A, dY.T, self.W.T).T
         self.G += dG
-        if self.n_iter % 50 == 0:
+        if self.n_iter % 5 == 0:
             print(f"_G_step() at iteration {self.n_iter + 1}: maximum G adjustment is:",
                   jnp.max(dG * dG), jnp.max(jnp.sum(dG * dG, axis=1)))
         if jnp.max(dG * dG) < (self.tol / self.M):
