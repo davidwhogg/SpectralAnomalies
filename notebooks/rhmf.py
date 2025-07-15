@@ -33,7 +33,7 @@ class RHMF():
         self.G = G
         self.trained = False
 
-    def train(self, data, weights, maxiter=jnp.inf, tol=1.e-4):
+    def train(self, data, weights, maxiter=jnp.inf, tol=1.e-5):
         """
         # inputs:
         `data`:     (N, M) array of observations.
@@ -73,7 +73,7 @@ class RHMF():
               self.objective(), self.original_objective())
         self.trained = True
 
-    def test(self, ystar, wstar, maxiter=100, verbose=False, tol=1.e-2):
+    def test(self, ystar, wstar, maxiter=100, verbose=False, tol=1.e-5):
         """
         # inputs:
         `ystar`:     (M, ) array for one observation.
@@ -95,10 +95,10 @@ class RHMF():
         w = 1. * wstar
         a = jnp.zeros(self.K)
         while not self.converged:
-            da = self._one_element_step(self.G, ystar - self.G.T @ a, w)
+            da = self._one_element_step(self.G, ystar - self.one_star_synthesis(a), w)
             a += da
             if jnp.max(da * da) < (tol * jnp.mean(a * a)): # input tol not self.tol
-                converged = True
+                self.converged = True
             w = self._update_one_star_W(ystar, wstar, a)
             self.n_iter += 1
             if self.n_iter >= maxiter:
@@ -106,6 +106,7 @@ class RHMF():
                 self.converged = True
         if verbose:
             print("test(): converged at iteration:", self.n_iter, ":",
+                  jnp.max(da * da), jnp.mean(a * a),
                   self.one_star_objective(ystar, w, a),
                   self.one_star_objective(ystar, wstar, a))
         return self.one_star_synthesis(a)
