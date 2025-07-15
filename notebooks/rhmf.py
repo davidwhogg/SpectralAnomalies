@@ -1,4 +1,4 @@
-"""
+"""A
 # Robust Heteroskedastic Matrix Factorization
 An iteratively-reweighted-least-squares (IRLS) version of HMF.
 
@@ -11,14 +11,13 @@ This code is licensed for re-use under the *MIT License*.
 See the file `LICENSE` for details.
 
 ## Comments:
-- Currently converges training on g-step objective improvement.
-  It would be better to converge training on the changes in the elements of G.
+- Currently converges training step on the maximum (squared) change in the g-step update.
+- Currently converges test step on the maximum (squared) change in the a-step update.
 
 ## Bugs:
 - Needs a set of unit tests.
 - Needs a set of functional tests.
 - Not packaged into a proper package.
-- See comment about convergence test.
 """
 
 import jax.numpy as jnp
@@ -26,16 +25,15 @@ import jax
 jax.config.update("jax_enable_x64", True)
 
 class RHMF():
-    def __init__(self, rank, nsigma, A=None, G=None, tol=1.e-5):
+    def __init__(self, rank, nsigma, A=None, G=None):
         self.K = int(rank)
         self.nsigma = float(nsigma)
         self.Q2 = self.nsigma ** 2
         self.A = A
         self.G = G
-        self.tol = tol
         self.trained = False
 
-    def train(self, data, weights, maxiter=jnp.inf):
+    def train(self, data, weights, maxiter=jnp.inf, tol=1.e-4):
         """
         # inputs:
         `data`:     (N, M) array of observations.
@@ -49,6 +47,7 @@ class RHMF():
         assert jnp.all(jnp.isfinite(weights))
         self.Y = jnp.array(data)
         self.input_W = jnp.array(weights)
+        self.tol = tol
         assert self.Y.shape == self.input_W.shape
         self.N, self.M = self.Y.shape
         self.converged = False
@@ -74,7 +73,7 @@ class RHMF():
               self.objective(), self.original_objective())
         self.trained = True
 
-    def test(self, ystar, wstar, maxiter=100, verbose=False):
+    def test(self, ystar, wstar, maxiter=100, verbose=False, tol=1.e-2):
         """
         # inputs:
         `ystar`:     (M, ) array for one observation.
@@ -96,11 +95,10 @@ class RHMF():
         w = 1. * wstar
         a = jnp.zeros(self.K)
         while not self.converged:
-            foo = self.one_star_objective(ystar, w, a)
-            a = self._one_element_step(self.G, ystar, w)
-            bar = self.one_star_objective(ystar, w, a)
-            if foo - bar < self.tol:
-                self.converged = True
+            da = self._one_element_step(self.G, ystar - self.G.T @ a, w)
+            a += da
+            if jnp.max(da * da) < (tol * jnp.mean(a * a)): # input tol not self.tol
+                converged = True
             w = self._update_one_star_W(ystar, wstar, a)
             self.n_iter += 1
             if self.n_iter >= maxiter:
@@ -172,17 +170,9 @@ class RHMF():
         - Works on residuals to reduce dynamic ranges for everything.
           (It is not obvious that this helps with anything.)
         """
-        foo = self.objective()
-        oldA = 1. * self.A # copy
         dY = self.resid()
         dA = jax.vmap(self._one_element_step, in_axes=(None, 0, 0))(self.G, dY, self.W).T
         self.A += dA
-        bar = self.objective()
-        if foo < bar:
-            print("_A_step(): WARNING: objective got worse:", foo, bar)
-            self.A = 0.99 * oldA + 0.01 * self.A
-            bar = self.objective()
-            print("_A_step(): after revert-compromise:", foo, bar)
 
     def _G_step(self):
         """
@@ -190,18 +180,13 @@ class RHMF():
         - Works on residuals to reduce dynamic ranges for everything.
           (It is not obvious that this helps with anything.)
         """
-        foo = self.objective()
-        oldG = 1. * self.G # copy
         dY = self.resid()
         dG = jax.vmap(self._one_element_step, in_axes=(None, 0, 0))(self.A, dY.T, self.W.T).T
         self.G += dG
-        bar = self.objective()
-        if foo < bar:
-            print("_G_step(): WARNING: objective got worse:", foo, bar)
-            self.G = 0.99 * oldG + 0.01 * self.G
-            bar = self.objective()
-            print("_G_step(): after revert-compromise:", foo, bar)
-        if foo - bar < self.tol:
+        if self.n_iter % 50 == 0:
+            print(f"_G_step() at iteration {self.n_iter + 1}: maximum G adjustment is:",
+                  jnp.max(dG * dG), jnp.max(jnp.sum(dG * dG, axis=1)))
+        if jnp.max(dG * dG) < (self.tol / self.M):
             self.converged = True
 
     def _affine(self):
