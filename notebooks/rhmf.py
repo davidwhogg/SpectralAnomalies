@@ -10,10 +10,15 @@ Copyright 2025 the author.
 This code is licensed for re-use under the *MIT License*.
 See the file `LICENSE` for details.
 
+## Comments:
+- Currently converges training on g-step objective improvement.
+  It would be better to converge training on the changes in the elements of G.
+
 ## Bugs:
 - Needs a set of unit tests.
 - Needs a set of functional tests.
 - Not packaged into a proper package.
+- See comment about convergence test.
 """
 
 import jax.numpy as jnp
