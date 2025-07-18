@@ -18,6 +18,7 @@ See the file `LICENSE` for details.
 - Needs a set of unit tests.
 - Needs a set of functional tests.
 - Not packaged into a proper package.
+- Is there any theory about the convergence or stability of IRLS?
 """
 
 import jax.numpy as jnp
