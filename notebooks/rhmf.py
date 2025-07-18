@@ -97,12 +97,12 @@ class RHMF():
         while not self.converged:
             da = self._one_element_step(self.G, ystar - self.one_star_synthesis(a), w)
             a += da
-            if jnp.max(da * da) < (tol * jnp.mean(a * a)): # input tol not self.tol
+            if (jnp.max(da * da) / jnp.mean(a * a)) < tol: # input tol not self.tol
                 self.converged = True
             w = self._update_one_star_W(ystar, wstar, a)
             self.n_iter += 1
             if self.n_iter >= maxiter:
-                print("train(): WARNING: stopping at maximum iteration, not true convergence")
+                print("test(): WARNING: stopping at maximum iteration, not true convergence")
                 self.converged = True
         if verbose:
             print("test(): converged at iteration:", self.n_iter, ":",
@@ -180,14 +180,17 @@ class RHMF():
         ## notes:
         - Works on residuals to reduce dynamic ranges for everything.
           (It is not obvious that this helps with anything.)
+
+        ## bugs:
+        - Assumes that `mean(G * G) = 1 / M`. This could be fixed.
         """
         dY = self.resid()
         dG = jax.vmap(self._one_element_step, in_axes=(None, 0, 0))(self.A, dY.T, self.W.T).T
         self.G += dG
         if self.n_iter % 5 == 0:
-            print(f"_G_step() at iteration {self.n_iter + 1}: maximum G adjustment is:",
-                  jnp.max(dG * dG), jnp.max(jnp.sum(dG * dG, axis=1)))
-        if jnp.max(dG * dG) < (self.tol / self.M):
+            print(f"_G_step() at iteration {self.n_iter + 1}: maximum fractional squared G adjustment is:",
+                  jnp.max(dG * dG) * self.M)
+        if (jnp.max(dG * dG) * self.M) < self.tol:
             self.converged = True
 
     def _affine(self):
