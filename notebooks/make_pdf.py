@@ -54,7 +54,7 @@ def png_to_pdf(png_files, output_pdf="output.pdf"):
             format='PDF',
             save_all=True,
             append_images=images[1:],
-            resolution=100.0
+            resolution=150
         )
         print(f"Successfully created {output_pdf} with {len(images)} pages")
         
