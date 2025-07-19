@@ -1,20 +1,22 @@
+#!/usr/bin/env python3
+
 import os
 from PIL import Image
 import glob
 
-def png_to_pdf(input_filespec, output_pdf="output.pdf"):
+def png_to_pdf(png_files, output_pdf="output.pdf"):
     """
-    Convert PNG images matching a filespec to a multi-page PDF.
+    Convert a list of PNG images to a multi-page PDF.
     
     Args:
-        input_filespec (str): File specification with wildcards (e.g., "*.png", "images/page_*.png")
+        png_files (list): List of PNG file paths
         output_pdf (str): Name of output PDF file
     """
-    # Get all PNG files matching the filespec and sort them
-    png_files = sorted(glob.glob(input_filespec))
+    # Sort the provided files
+    png_files = sorted(png_files)
     
     if not png_files:
-        print(f"No files found matching pattern: {input_filespec}")
+        print("No PNG files provided")
         return
     
     print(f"Found {len(png_files)} PNG files")
@@ -63,14 +65,14 @@ def png_to_pdf(input_filespec, output_pdf="output.pdf"):
 if __name__ == "__main__":
     import sys
     
-    if len(sys.argv) != 3:
-        print("Usage: python script.py <input_filespec> <output_pdf>")
-        print("Example: python script.py '*.png' combined_images.pdf")
-        print("Example: python script.py 'images/page_*.png' report.pdf")
-        print("Example: python script.py '/path/to/files/img_[0-9][0-9].png' numbered.pdf")
+    if len(sys.argv) < 3:
+        print("Usage: python script.py <png_file1> [png_file2] ... <output_pdf>")
+        print("Example: python script.py image1.png image2.png image3.png output.pdf")
+        print("Example: python script.py *.png output.pdf  # (shell expands *.png)")
         sys.exit(1)
     
-    input_filespec = sys.argv[1]
-    output_file = sys.argv[2]
+    # Last argument is the output PDF, everything else is input PNG files
+    png_files = sys.argv[1:-1]
+    output_file = sys.argv[-1]
     
-    png_to_pdf(input_filespec, output_file)
+    png_to_pdf(png_files, output_file)
