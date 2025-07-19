@@ -181,17 +181,15 @@ class RHMF():
         ## notes:
         - Works on residuals to reduce dynamic ranges for everything.
           (It is not obvious that this helps with anything.)
-
-        ## bugs:
-        - Assumes that `mean(G * G) = 1 / M`. This could be fixed.
+        - Converges on an estimate of fractional change in G (not the objective function).
         """
         dY = self.resid()
         dG = jax.vmap(self._one_element_step, in_axes=(None, 0, 0))(self.A, dY.T, self.W.T).T
         self.G += dG
         if self.n_iter % 5 == 0:
             print(f"_G_step() at iteration {self.n_iter + 1}: maximum fractional squared G adjustment is:",
-                  jnp.max(dG * dG) * self.M)
-        if (jnp.max(dG * dG) * self.M) < self.tol:
+                  jnp.max(dG * dG) / jnp.mean(self.G * self.G))
+        if (jnp.max(dG * dG) / jnp.mean(self.G * self.G)) < self.tol:
             self.converged = True
 
     def _affine(self):
