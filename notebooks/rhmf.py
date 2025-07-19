@@ -15,6 +15,7 @@ See the file `LICENSE` for details.
 - Currently converges test step on the maximum (squared) change in the a-step update.
 
 ## Bugs:
+- Needs a way to save and restore a model, like repr? or pickle?
 - Needs a set of unit tests.
 - Needs a set of functional tests.
 - Not packaged into a proper package.
