@@ -10,5 +10,5 @@ All code in this repository is released for re-use under the open-source *MIT Li
 
 ## Projects
 - Develop, test, and write up a Robust version of Heteroskedastic Matrix Factorization ([Tsalmantza & Hogg 2012](https://arxiv.org/abs/1201.3370))
-- Look for H-alpha emission in hot main-sequence stars.
+- Look for H-alpha emission in hot main-sequence stars in the *SDSS-V BOSS* spectroscopic sample.
 - Look for second redshifts in the spectra of galaxies and quasars.
