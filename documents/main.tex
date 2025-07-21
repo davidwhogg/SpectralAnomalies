@@ -1,4 +1,66 @@
 \documentclass{article}
+\usepackage{amsmath}
+
+% math macros
+\DeclareMathOperator{\solve}{solve}
+
+\sloppy\sloppypar\raggedbottom\frenchspacing % hogg's quartet
 \begin{document}
-Hello world!
+
+\section{Assumptions and choices}
+
+\section{Method}
+The setup is that there are $N$ spectra $y_i$ ($1\leq i\leq N$),
+each of which has $M$ pixels $y_{ij}$ ($1\leq j\leq M$).
+Importantly for what follows, some of the pixels can have dummy or null values, because not all pixels of all spectra will have been observed in most real contexts.
+Along with each pixel value $y_{ij}$ there is an associated inverse-variance weight $w_{ij}$.
+Usually these weights will be inverse uncertainty variances $\sigma_{ij}^{-2}$.
+Importantly, the pixels with dummy or null values of $y_{ij}$ should have vanishing weights $w_{ij}$.
+Vanishing weights ($w_{ij}\rightarrow 0$) are equivalent to infinitely large ``error bars'' ($\sigma_{ij}\rightarrow\infty$).
+
+The weights need to have two properties for the method to be safe:
+\textsl{(1)}~All the weights need to be strictly non-negative, and
+\textsl{(2)}~each weight $w_{ij}$ needs to have units that are inverse of the square of the units of the pixel value $y_{ij}$.
+So if the $y_{ij}$ have units of flux, then the units of the weights $w_{ij}$ need to be inverse flux squared.
+
+The data $y_{ij}$ are rectangular in the following sense:
+Each index value $i$ corresponds to one, well-defined spectrum of one star, and
+each index value $j$ corresponds to one, well-defined wavelength $\lambda_j$ (which could be spectrograph-frame wavelength or stellar rest-frame wavelength, depending on task).
+Every $i,j$ pair has an entry, although many of them will have $w_{ij}=0$ because they are unobserved values.
+Because the method will be perfectly insensitive to pixels with $w_{ij}=0$, it doesn't matter what the fill value is for $y_{ij}$, but it makes sense to use something sensible (like zero) for numerical safety.
+
+The method will be unstable unless, for each star $i$, there are many observed wavelengths $j$ ($w_{ij} > 0$ for many pixels $j$, for every $i$).
+Similarly, we will need it to be the case that, for each wavelength $j$, there are many observed stars $i$ observed ($w_{ij} > 0$ for many stars $i$, at every $j$).
+Without breaking rectangularity, any stars $i$ or wavelengths $j$ that do not meet these criteria can be dropped from the method prior to start.
+
+The model, conceptually, is that the rectangular data matrix composed of the $y_{ij}$ can be represented, up to noise, as a low-rank matrix plus sparse outliers.
+To be slightly more specific,
+\begin{align}
+    y_{ij} &= \sum_{k=1}^K a_{ik}\,g_{kj} + \text{outliers} + \text{noise} ~,\label{eq:model}
+\end{align}
+where the rank is $K$,
+each $a_i$ is a $K$-vector of coefficients $a_{ik}$,
+each $g_k$ is an $M$-vector eigenvector of the low-rank model,
+and the outliers and noise can't really be distinguished from one another.
+That is, the model is low-rank plus outliers plus noise but really it can be seen as just low-rank plus residuals.
+
+HOGG: chi-squared, and then probabilistic interpretation of IRLS in this context; is there one?
+
+HOGG: Optimization by alternating least squares with IRLS mixed in.
+\begin{align}
+    a_{i} &\leftarrow \solve(A_i, b_i) \\ \label{eq:a-step}
+    [A_i]_{kk'} &= \sum_{j=1}^M g_{kj}\,w_{ij}\,g_{k'j} \\
+    [b_i]_k     &= \sum_{j=1}^M g_{kj}\,w_{ij}\,y_{ij}
+\end{align}
+where the operator $\solve(A, b)$ returns $A^{-1}\,b$,
+$A_i$ is a $K\times K$ matrix with entries $[A_j]_{kk'}$,
+and $b_i$ is a $K$-vector with components $[b_i]_k$.
+\begin{align}
+    g_{j} &\leftarrow \solve(A_j, b_j) \\ \label{eq:g-step}
+    [A_j]_{kk'} &= \sum_{i=1}^N a_{ik}\,w_{ij}\,a_{ik'} \\
+    [b_j]_k     &= \sum_{i=1}^N a_{ik}\,w_{ij}\,y_{ij}
+\end{align}
+where $A_j$ is a $K\times K$ matrix with entries $[A_j]_{kk'}$,
+and $b_j$ is a $K$-vector with components $[b_j]_k$.
+
 \end{document}
