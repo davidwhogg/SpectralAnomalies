@@ -3,6 +3,7 @@
 
 % math macros
 \DeclareMathOperator{\solve}{solve}
+\DeclareMathOperator{\svd}{svd}
 
 \sloppy\sloppypar\raggedbottom\frenchspacing % hogg's quartet
 \begin{document}
@@ -46,21 +47,54 @@ That is, the model is low-rank plus outliers plus noise but really it can be see
 
 HOGG: chi-squared, and then probabilistic interpretation of IRLS in this context; is there one?
 
-HOGG: Optimization by alternating least squares with IRLS mixed in.
+Training of this model proceeds by alternating least squares with IRLS mixed in.
+Before starting the optimization, the coefficients $a_{ik}$ and components $g_{kj}$ are initialized with a singular-value decomposition of the data:
 \begin{align}
-    a_{i} &\leftarrow \solve(A_i, b_i) \\ \label{eq:a-step}
+    [Y]_{ij} &= y_{ij} \\
+    U\,S\,V &= \svd(Y) \\
+    a_{ik} &\leftarrow [U]_{ik}\,[S]_{kk} \\
+    g_{ik} &\leftarrow [V]_{kj}
+\end{align}
+where HOGG: finish this.
+
+After initialization, the steps in the optimization schedule are the following:
+The \textbf{a-step} finds best-fit values for the coefficients $a_{ij}$ given the current guess of the eigenvector components $g_{kj}$:
+\begin{align}
+    a_i &\leftarrow \solve(A_i, b_i) \\ \label{eq:a-step}
     [A_i]_{kk'} &= \sum_{j=1}^M g_{kj}\,w_{ij}\,g_{k'j} \\
     [b_i]_k     &= \sum_{j=1}^M g_{kj}\,w_{ij}\,y_{ij}
 \end{align}
-where the operator $\solve(A, b)$ returns $A^{-1}\,b$,
+where $a_i$ is a $K$-vector of coefficients,
+the operator $\solve(A, b)$ returns $A^{-1}\,b$,
 $A_i$ is a $K\times K$ matrix with entries $[A_j]_{kk'}$,
 and $b_i$ is a $K$-vector with components $[b_i]_k$.
+
+The \textbf{g-step} finds best-fit values for the eigenvector components $g_{kj}$
 \begin{align}
-    g_{j} &\leftarrow \solve(A_j, b_j) \\ \label{eq:g-step}
+    g_j &\leftarrow \solve(A_j, b_j) \\ \label{eq:g-step}
     [A_j]_{kk'} &= \sum_{i=1}^N a_{ik}\,w_{ij}\,a_{ik'} \\
     [b_j]_k     &= \sum_{i=1}^N a_{ik}\,w_{ij}\,y_{ij}
 \end{align}
-where $A_j$ is a $K\times K$ matrix with entries $[A_j]_{kk'}$,
+where $g_j$ is a $K$-vector of eigenvector components,
+$A_j$ is a $K\times K$ matrix with entries $[A_j]_{kk'}$,
 and $b_j$ is a $K$-vector with components $[b_j]_k$.
+
+This model has a huge set of degeneracies:
+The $a_{ik}$ can be multiplied by a factor, and the $g_{kj}$ can be divided by that same factor.
+The orientation of the eigenvectors $g_k$ can be rotated and the coefficients $a_{ik}$ can be de-rotated.
+In practice, to break some (but not all) of these degeneracies, after each iteration of the a-step and the g-step,
+a singular-value decomposition is performed on the low-rank matrix
+to rotate and rescale the $g_k$ axes back to a standard orientation in the data space.
+This looks like the following:
+\begin{align}
+    [L]_{ij} &= \sum_{k=1}^K a_{ik}\,g_{kj} \\
+    U\,S\,V &= \svd(L) \\
+    a_{ik} &\leftarrow [U]_{ik}\,[S]_{kk} \\
+    g_{ik} &\leftarrow [V]_{kj}
+\end{align}
+where HOGG: finish this.
+
+The \textbf{w-step} updates the weights $w_{ij}$ for robustness:
+HOGG TO-DO
 
 \end{document}
