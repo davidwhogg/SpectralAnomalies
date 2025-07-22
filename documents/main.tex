@@ -23,6 +23,8 @@
 
 \begin{document}
 
+\section{Introduction}
+
 \section{Assumptions and choices}
 
 \section{Method}
@@ -52,7 +54,7 @@ Without breaking rectangularity, any stars $i$ or wavelengths $j$ that do not me
 The model, conceptually, is that the rectangular data matrix composed of the $y_{ij}$ can be represented, up to noise, as a low-rank matrix plus sparse outliers.
 To be slightly more specific,
 \begin{align}
-    y_{ij} &= \sum_{k=1}^K a_{ik}\,g_{kj} + \text{outliers} + \text{noise} ~,\label{eq:model}
+    y_{ij} &= \sum_{k=1}^K a_{ik}\,g_{kj} + \text{outliers} + \text{noise} \label{eq:model}~,
 \end{align}
 where the rank is $K$,
 each $a_i$ is a $K$-vector of coefficients $a_{ik}$,
@@ -62,6 +64,7 @@ That is, the model is low-rank plus outliers plus noise but really it can be see
 
 HOGG: probabilistic interpretation of chi-squared, and then probabilistic interpretation of IRLS in this context; is there one?
 
+\paragraph{Training:}
 Training of this model proceeds by alternating least squares with IRLS mixed in.
 Before starting the optimization, the coefficients $a_{ik}$ and components $g_{kj}$ are initialized with a singular-value decomposition (SVD) of the data:
 \begin{align}
@@ -77,7 +80,7 @@ This initialization is not great, because the data are filled with missing value
 After initialization, the steps in the optimization schedule are the following:
 The \textbf{a-step} finds best-fit values for the coefficients $a_{ij}$ given the current guess of the eigenvector components $g_{kj}$:
 \begin{align}
-    a_i &\leftarrow \solve(A_i, b_i) \\ \label{eq:a-step}
+    a_i &\leftarrow \solve(A_i, b_i) \label{eq:a-step} \\
     [A_i]_{kk'} &= \sum_{j=1}^M g_{kj}\,w_{ij}\,g_{k'j} \\
     [b_i]_k     &= \sum_{j=1}^M g_{kj}\,w_{ij}\,y_{ij} ~,
 \end{align}
@@ -88,7 +91,7 @@ and $b_i$ is a $K$-vector with components $[b_i]_k$.
 
 The \textbf{g-step} finds best-fit values for the eigenvector components $g_{kj}$
 \begin{align}
-    g_j &\leftarrow \solve(A_j, b_j) \\ \label{eq:g-step}
+    g_j &\leftarrow \solve(A_j, b_j) \label{eq:g-step} \\
     [A_j]_{kk'} &= \sum_{i=1}^N a_{ik}\,w_{ij}\,a_{ik'} \\
     [b_j]_k     &= \sum_{i=1}^N a_{ik}\,w_{ij}\,y_{ij} ~,
 \end{align}
@@ -114,13 +117,29 @@ Importantly this operation does not change the model predictions \emph{at all}; 
 
 The \textbf{w-step} updates the weights $w_{ij}$ for robustness:
 \begin{align}
-    w_{ij} &\leftarrow w^\text{(in)}_{ij}\,\frac{Q^2}{w^\text{(in)}_{ij}\,\Delta_{ij}^2 + Q^2} \\ \label{eq:w-step}
+    w_{ij} &\leftarrow w^\text{(in)}_{ij}\,\frac{Q^2}{w^\text{(in)}_{ij}\,\Delta_{ij}^2 + Q^2} \label{eq:w-step} \\
     \Delta_{ij} &= y_{ij} - \sum_{k=1}^K a_{ik}\,g_{kj} ~,
 \end{align}
 where the $w^\text{(in)}_{ij}$ are the original input (investigator-specified) data weights,
 $Q$ is the dimensionless soft outlier threshold,
 and $\Delta_{ij}$ is the residual of the (current best-fit) model at datum $y_{ij}$
 This formula \eqref{eq:w-step} looks magical but it's just a zero-safe version of a standard iteratively reweighted least squares method \cite{irls}.
-Note that the factor adjusting the input weights is dimensionless provided that the weights have units that are the inverse square of the data units.
+As the residual $\Delta_{ij}$ gets very large, $w_{ij}$ approaches $Q^2 / \Delta_{ij}^2$; when the dimensionless squared residual $w^\text{(in)}_{ij}\,\Delta_{ij}^2$ is much less than $Q^2$, $w_{ij}\approx w^\text{(in)}_{ij}$.
+Note that this weight adjustment only makes sense if the weights have units that are the inverse square of the data units.
+
+The a-step, g-step, SVD reorientation, and w-step are iterated to convergence.
+Convergence is judged by a dimensionless estimate of the size of the g-step adjustment.
+The output of training is the full, converged, $N\times K$ matrix $A$ of coefficients $a_{ik}$ and the full, converged, $K\times M$ matrix $G$ of components $g_{kj}$.
+
+\paragraph{Test time:}
+At test time, a new data object $y_\ast$ with $M$ pixel values $y_{\ast j}$ is introduced, with associated weights $w_{\ast j}$, including probably some missing data with vanishing weights.
+The a-step and w-step are iterated on this object to convergence, keeping all the components $g_{kj}$ fixed.
+Convergence is judged by a dimensionless estimate of the size of the a-step adjustment.
+The output of test time is $K$ converged coefficients $a_{\ast k}$.
+
+\paragraph{Implementation notes}
+Trimming down under-observed objects and wavelengths?
+Working on residuals not data?
+Actually output synthetic data not a values?
 
 \end{document}
