@@ -1,11 +1,26 @@
 \documentclass{article}
+\usepackage[letterpaper]{geometry}
+\usepackage{setspace}
 \usepackage{amsmath}
+
+% page layout -- the idea is, set text height and width and then set margins to match
+\setlength{\textheight}{8.75in}
+\setlength{\textwidth}{5.00in}
+\setlength{\topmargin}{0.5\paperheight}\addtolength{\topmargin}{-1in}\addtolength{\topmargin}{-0.5\textheight}\addtolength{\topmargin}{-\headsep}\addtolength{\topmargin}{-\headheight}
+\setlength{\oddsidemargin}{0.5\paperwidth}\addtolength{\oddsidemargin}{-1in}\addtolength{\oddsidemargin}{-0.5\textwidth}
+\pagestyle{myheadings}
+\markboth{foo}{\sffamily Hogg / robust heteroskedastic matrix factorization}
+
+% other text layout adjustment commands
+\renewcommand{\newblock}{} % this adjusts the bibliography style.
+\setstretch{1.08}
+\sloppy\sloppypar\raggedbottom
+\frenchspacing
 
 % math macros
 \DeclareMathOperator{\solve}{solve}
 \DeclareMathOperator{\svd}{svd}
 
-\sloppy\sloppypar\raggedbottom\frenchspacing % hogg's quartet
 \begin{document}
 
 \section{Assumptions and choices}
@@ -45,24 +60,26 @@ each $g_k$ is an $M$-vector eigenvector of the low-rank model,
 and the outliers and noise can't really be distinguished from one another.
 That is, the model is low-rank plus outliers plus noise but really it can be seen as just low-rank plus residuals.
 
-HOGG: chi-squared, and then probabilistic interpretation of IRLS in this context; is there one?
+HOGG: probabilistic interpretation of chi-squared, and then probabilistic interpretation of IRLS in this context; is there one?
 
 Training of this model proceeds by alternating least squares with IRLS mixed in.
-Before starting the optimization, the coefficients $a_{ik}$ and components $g_{kj}$ are initialized with a singular-value decomposition of the data:
+Before starting the optimization, the coefficients $a_{ik}$ and components $g_{kj}$ are initialized with a singular-value decomposition (SVD) of the data:
 \begin{align}
     [Y]_{ij} &= y_{ij} \\
     U\,S\,V &= \svd(Y) \\
     a_{ik} &\leftarrow [U]_{ik}\,[S]_{kk} \\
-    g_{ik} &\leftarrow [V]_{kj}
+    g_{ik} &\leftarrow [V]_{kj} ~,
 \end{align}
-where HOGG: finish this.
+where $Y$ is the rectangular data matrix,
+and the operator $\svd()$ takes the standard singular-value decomposition with $U, V$ unitary and $S$ diagonal.
+This initialization is not great, because the data are filled with missing values and the SVD has no understanding of that.
 
 After initialization, the steps in the optimization schedule are the following:
 The \textbf{a-step} finds best-fit values for the coefficients $a_{ij}$ given the current guess of the eigenvector components $g_{kj}$:
 \begin{align}
     a_i &\leftarrow \solve(A_i, b_i) \\ \label{eq:a-step}
     [A_i]_{kk'} &= \sum_{j=1}^M g_{kj}\,w_{ij}\,g_{k'j} \\
-    [b_i]_k     &= \sum_{j=1}^M g_{kj}\,w_{ij}\,y_{ij}
+    [b_i]_k     &= \sum_{j=1}^M g_{kj}\,w_{ij}\,y_{ij} ~,
 \end{align}
 where $a_i$ is a $K$-vector of coefficients,
 the operator $\solve(A, b)$ returns $A^{-1}\,b$,
@@ -73,7 +90,7 @@ The \textbf{g-step} finds best-fit values for the eigenvector components $g_{kj}
 \begin{align}
     g_j &\leftarrow \solve(A_j, b_j) \\ \label{eq:g-step}
     [A_j]_{kk'} &= \sum_{i=1}^N a_{ik}\,w_{ij}\,a_{ik'} \\
-    [b_j]_k     &= \sum_{i=1}^N a_{ik}\,w_{ij}\,y_{ij}
+    [b_j]_k     &= \sum_{i=1}^N a_{ik}\,w_{ij}\,y_{ij} ~,
 \end{align}
 where $g_j$ is a $K$-vector of eigenvector components,
 $A_j$ is a $K\times K$ matrix with entries $[A_j]_{kk'}$,
@@ -83,18 +100,27 @@ This model has a huge set of degeneracies:
 The $a_{ik}$ can be multiplied by a factor, and the $g_{kj}$ can be divided by that same factor.
 The orientation of the eigenvectors $g_k$ can be rotated and the coefficients $a_{ik}$ can be de-rotated.
 In practice, to break some (but not all) of these degeneracies, after each iteration of the a-step and the g-step,
-a singular-value decomposition is performed on the low-rank matrix
+an SVD is performed on the low-rank matrix
 to rotate and rescale the $g_k$ axes back to a standard orientation in the data space.
 This looks like the following:
 \begin{align}
     [L]_{ij} &= \sum_{k=1}^K a_{ik}\,g_{kj} \\
     U\,S\,V &= \svd(L) \\
     a_{ik} &\leftarrow [U]_{ik}\,[S]_{kk} \\
-    g_{ik} &\leftarrow [V]_{kj}
+    g_{ik} &\leftarrow [V]_{kj} ~,
 \end{align}
-where HOGG: finish this.
+similar to the SVD-based initialization described above, but now acting on the low-rank model rather than the data.
+Importantly this operation does not change the model predictions \emph{at all}; it just re-scales, re-orients, and re-orders the eigenvectors.
 
 The \textbf{w-step} updates the weights $w_{ij}$ for robustness:
-HOGG TO-DO
+\begin{align}
+    w_{ij} &\leftarrow w^\text{(in)}_{ij}\,\frac{Q^2}{w^\text{(in)}_{ij}\,\Delta_{ij}^2 + Q^2} \\ \label{eq:w-step}
+    \Delta_{ij} &= y_{ij} - \sum_{k=1}^K a_{ik}\,g_{kj} ~,
+\end{align}
+where the $w^\text{(in)}_{ij}$ are the original input (investigator-specified) data weights,
+$Q$ is the dimensionless soft outlier threshold,
+and $\Delta_{ij}$ is the residual of the (current best-fit) model at datum $y_{ij}$
+This formula \eqref{eq:w-step} looks magical but it's just a zero-safe version of a standard iteratively reweighted least squares method \cite{irls}.
+Note that the factor adjusting the input weights is dimensionless provided that the weights have units that are the inverse square of the data units.
 
 \end{document}
