@@ -1,4 +1,145 @@
 \documentclass{article}
+\usepackage[letterpaper]{geometry}
+\usepackage{setspace}
+\usepackage{amsmath}
+
+% page layout -- the idea is, set text height and width and then set margins to match
+\setlength{\textheight}{8.75in}
+\setlength{\textwidth}{5.00in}
+\setlength{\topmargin}{0.5\paperheight}\addtolength{\topmargin}{-1in}\addtolength{\topmargin}{-0.5\textheight}\addtolength{\topmargin}{-\headsep}\addtolength{\topmargin}{-\headheight}
+\setlength{\oddsidemargin}{0.5\paperwidth}\addtolength{\oddsidemargin}{-1in}\addtolength{\oddsidemargin}{-0.5\textwidth}
+\pagestyle{myheadings}
+\markboth{foo}{\sffamily Hogg / robust heteroskedastic matrix factorization}
+
+% other text layout adjustment commands
+\renewcommand{\newblock}{} % this adjusts the bibliography style.
+\setstretch{1.08}
+\sloppy\sloppypar\raggedbottom
+\frenchspacing
+
+% math macros
+\DeclareMathOperator{\solve}{solve}
+\DeclareMathOperator{\svd}{svd}
+
 \begin{document}
-Hello world!
+
+\section{Introduction}
+
+\section{Assumptions and choices}
+
+\section{Method}
+The setup is that there are $N$ spectra $y_i$ ($1\leq i\leq N$),
+each of which has $M$ pixels $y_{ij}$ ($1\leq j\leq M$).
+Importantly for what follows, some of the pixels can have dummy or null values, because not all pixels of all spectra will have been observed in most real contexts.
+Along with each pixel value $y_{ij}$ there is an associated inverse-variance weight $w_{ij}$.
+Usually these weights will be inverse uncertainty variances $\sigma_{ij}^{-2}$.
+Importantly, the pixels with dummy or null values of $y_{ij}$ should have vanishing weights $w_{ij}$.
+Vanishing weights ($w_{ij}\rightarrow 0$) are equivalent to infinitely large ``error bars'' ($\sigma_{ij}\rightarrow\infty$).
+
+The weights need to have two properties for the method to be safe:
+\textsl{(1)}~All the weights need to be strictly non-negative, and
+\textsl{(2)}~each weight $w_{ij}$ needs to have units that are inverse of the square of the units of the pixel value $y_{ij}$.
+So if the $y_{ij}$ have units of flux, then the units of the weights $w_{ij}$ need to be inverse flux squared.
+
+The data $y_{ij}$ are rectangular in the following sense:
+Each index value $i$ corresponds to one, well-defined spectrum of one star, and
+each index value $j$ corresponds to one, well-defined wavelength $\lambda_j$ (which could be spectrograph-frame wavelength or stellar rest-frame wavelength, depending on task).
+Every $i,j$ pair has an entry, although many of them will have $w_{ij}=0$ because they are unobserved values.
+Because the method will be perfectly insensitive to pixels with $w_{ij}=0$, it doesn't matter what the fill value is for $y_{ij}$, but it makes sense to use something sensible (like zero) for numerical safety.
+
+The method will be unstable unless, for each star $i$, there are many observed wavelengths $j$ ($w_{ij} > 0$ for many pixels $j$, for every $i$).
+Similarly, we will need it to be the case that, for each wavelength $j$, there are many observed stars $i$ observed ($w_{ij} > 0$ for many stars $i$, at every $j$).
+Without breaking rectangularity, any stars $i$ or wavelengths $j$ that do not meet these criteria can be dropped from the method prior to start.
+
+The model, conceptually, is that the rectangular data matrix composed of the $y_{ij}$ can be represented, up to noise, as a low-rank matrix plus sparse outliers.
+To be slightly more specific,
+\begin{align}
+    y_{ij} &= \sum_{k=1}^K a_{ik}\,g_{kj} + \text{outliers} + \text{noise} \label{eq:model}~,
+\end{align}
+where the rank is $K$,
+each $a_i$ is a $K$-vector of coefficients $a_{ik}$,
+each $g_k$ is an $M$-vector eigenvector of the low-rank model,
+and the outliers and noise can't really be distinguished from one another.
+That is, the model is low-rank plus outliers plus noise but really it can be seen as just low-rank plus residuals.
+
+HOGG: probabilistic interpretation of chi-squared, and then probabilistic interpretation of IRLS in this context; is there one?
+
+\paragraph{Training:}
+Training of this model proceeds by alternating least squares with IRLS mixed in.
+Before starting the optimization, the coefficients $a_{ik}$ and components $g_{kj}$ are initialized with a singular-value decomposition (SVD) of the data:
+\begin{align}
+    [Y]_{ij} &= y_{ij} \\
+    U\,S\,V &= \svd(Y) \\
+    a_{ik} &\leftarrow [U]_{ik}\,[S]_{kk} \\
+    g_{ik} &\leftarrow [V]_{kj} ~,
+\end{align}
+where $Y$ is the rectangular data matrix,
+and the operator $\svd()$ takes the standard singular-value decomposition with $U, V$ unitary and $S$ diagonal.
+This initialization is not great, because the data are filled with missing values and the SVD has no understanding of that.
+
+After initialization, the steps in the optimization schedule are the following:
+The \textbf{a-step} finds best-fit values for the coefficients $a_{ij}$ given the current guess of the eigenvector components $g_{kj}$:
+\begin{align}
+    a_i &\leftarrow \solve(A_i, b_i) \label{eq:a-step} \\
+    [A_i]_{kk'} &= \sum_{j=1}^M g_{kj}\,w_{ij}\,g_{k'j} \\
+    [b_i]_k     &= \sum_{j=1}^M g_{kj}\,w_{ij}\,y_{ij} ~,
+\end{align}
+where $a_i$ is a $K$-vector of coefficients,
+the operator $\solve(A, b)$ returns $A^{-1}\,b$,
+$A_i$ is a $K\times K$ matrix with entries $[A_j]_{kk'}$,
+and $b_i$ is a $K$-vector with components $[b_i]_k$.
+
+The \textbf{g-step} finds best-fit values for the eigenvector components $g_{kj}$
+\begin{align}
+    g_j &\leftarrow \solve(A_j, b_j) \label{eq:g-step} \\
+    [A_j]_{kk'} &= \sum_{i=1}^N a_{ik}\,w_{ij}\,a_{ik'} \\
+    [b_j]_k     &= \sum_{i=1}^N a_{ik}\,w_{ij}\,y_{ij} ~,
+\end{align}
+where $g_j$ is a $K$-vector of eigenvector components,
+$A_j$ is a $K\times K$ matrix with entries $[A_j]_{kk'}$,
+and $b_j$ is a $K$-vector with components $[b_j]_k$.
+
+This model has a huge set of degeneracies:
+The $a_{ik}$ can be multiplied by a factor, and the $g_{kj}$ can be divided by that same factor.
+The orientation of the eigenvectors $g_k$ can be rotated and the coefficients $a_{ik}$ can be de-rotated.
+In practice, to break some (but not all) of these degeneracies, after each iteration of the a-step and the g-step,
+an SVD is performed on the low-rank matrix
+to rotate and rescale the $g_k$ axes back to a standard orientation in the data space.
+This looks like the following:
+\begin{align}
+    [L]_{ij} &= \sum_{k=1}^K a_{ik}\,g_{kj} \\
+    U\,S\,V &= \svd(L) \\
+    a_{ik} &\leftarrow [U]_{ik}\,[S]_{kk} \\
+    g_{ik} &\leftarrow [V]_{kj} ~,
+\end{align}
+similar to the SVD-based initialization described above, but now acting on the low-rank model rather than the data.
+Importantly this operation does not change the model predictions \emph{at all}; it just re-scales, re-orients, and re-orders the eigenvectors.
+
+The \textbf{w-step} updates the weights $w_{ij}$ for robustness:
+\begin{align}
+    w_{ij} &\leftarrow w^\text{(in)}_{ij}\,\frac{Q^2}{w^\text{(in)}_{ij}\,\Delta_{ij}^2 + Q^2} \label{eq:w-step} \\
+    \Delta_{ij} &= y_{ij} - \sum_{k=1}^K a_{ik}\,g_{kj} ~,
+\end{align}
+where the $w^\text{(in)}_{ij}$ are the original input (investigator-specified) data weights,
+$Q$ is the dimensionless soft outlier threshold,
+and $\Delta_{ij}$ is the residual of the (current best-fit) model at datum $y_{ij}$
+This formula \eqref{eq:w-step} looks magical but it's just a zero-safe version of a standard iteratively reweighted least squares method \cite{irls}.
+As the residual $\Delta_{ij}$ gets very large, $w_{ij}$ approaches $Q^2 / \Delta_{ij}^2$; when the dimensionless squared residual $w^\text{(in)}_{ij}\,\Delta_{ij}^2$ is much less than $Q^2$, $w_{ij}\approx w^\text{(in)}_{ij}$.
+Note that this weight adjustment only makes sense if the weights have units that are the inverse square of the data units.
+
+The a-step, g-step, SVD reorientation, and w-step are iterated to convergence.
+Convergence is judged by a dimensionless estimate of the size of the g-step adjustment.
+The output of training is the full, converged, $N\times K$ matrix $A$ of coefficients $a_{ik}$ and the full, converged, $K\times M$ matrix $G$ of components $g_{kj}$.
+
+\paragraph{Test time:}
+At test time, a new data object $y_\ast$ with $M$ pixel values $y_{\ast j}$ is introduced, with associated weights $w_{\ast j}$, including probably some missing data with vanishing weights.
+The a-step and w-step are iterated on this object to convergence, keeping all the components $g_{kj}$ fixed.
+Convergence is judged by a dimensionless estimate of the size of the a-step adjustment.
+The output of test time is $K$ converged coefficients $a_{\ast k}$.
+
+\paragraph{Implementation notes}
+Trimming down under-observed objects and wavelengths?
+Working on residuals not data?
+Actually output synthetic data not a values?
+
 \end{document}
