@@ -33,9 +33,21 @@ class RHMF():
         self.Q2 = self.nsigma ** 2
         self.A = A
         self.G = G
+        self.Y = None
+        self.input_W = None
         self.trained = False
 
-    def train(self, data, weights, maxiter=jnp.inf, tol=1.e-5):
+    def set_training_data(self, data, weights):
+        assert jnp.all(jnp.isfinite(data))
+        assert jnp.all(jnp.isfinite(weights))
+        self.Y = jnp.array(data)          # copy, I hope
+        self.input_W = jnp.array(weights) # copy, I hope
+        self.N, self.M = self.Y.shape
+        assert self.Y.shape == self.input_W.shape
+        self.A = None         # because data just changed
+        self.trained = False  # because data just changed
+        
+    def train(self, maxiter=jnp.inf, tol=1.e-5):
         """
         # inputs:
         `data`:     (N, M) array of observations.
@@ -43,15 +55,14 @@ class RHMF():
 
         # comments:
         - Checks convergence with the g-step only.
+
+        # bugs:
+        - Should `raise` not `assert` right?
         """
-        self.trained = False
-        assert jnp.all(jnp.isfinite(data))
-        assert jnp.all(jnp.isfinite(weights))
-        self.Y = jnp.array(data)
-        self.input_W = jnp.array(weights)
+        if self.Y is None or self.input_W is None:
+            print("train(): ERROR: No training data.")
+            assert False
         self.tol = tol
-        assert self.Y.shape == self.input_W.shape
-        self.N, self.M = self.Y.shape
         self.converged = False
         self.n_iter = 0
         self._initialize()
