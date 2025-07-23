@@ -38,7 +38,7 @@ def png_to_pdf(png_files, output_pdf="output.pdf"):
                 img = img.convert('RGB')
             
             images.append(img)
-            print(f"Processed: {os.path.basename(png_file)}")
+            # print(f"Processed: {os.path.basename(png_file)}")
             
         except Exception as e:
             print(f"Error processing {png_file}: {e}")
