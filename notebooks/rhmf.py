@@ -184,6 +184,8 @@ class RHMF():
         - Works on residuals to reduce dynamic ranges for everything.
           (It is not obvious that this helps with anything.)
         """
+        if self.A is None:
+            self.A = jnp.zeros((self.K, self.N))
         dY = self.resid()
         dA = jax.vmap(self._one_element_step, in_axes=(None, 0, 0))(self.G, dY, self.W).T
         self.A += dA
