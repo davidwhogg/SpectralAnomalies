@@ -70,6 +70,7 @@ class RHMF():
         while not self.converged:
             self._update_W()
             self._A_step()
+            self._update_W()
             self._G_step()
             self._affine()
             self.n_iter += 1
