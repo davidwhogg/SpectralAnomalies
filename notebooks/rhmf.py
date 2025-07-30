@@ -15,6 +15,7 @@ See the file `LICENSE` for details.
 - Currently converges test step on the maximum (squared) change in the a-step update.
 
 ## Bugs:
+- `test()` function (outside object) needs comments.
 - Needs a way to save and restore a model, like repr? or pickle?
 - Needs a set of unit tests.
 - Needs a set of functional tests.
@@ -25,6 +26,37 @@ See the file `LICENSE` for details.
 import jax.numpy as jnp
 import jax
 jax.config.update("jax_enable_x64", True)
+
+def test(ystar, wstar, G, Q2, maxiter=100, tol=1.e-5):
+    """
+    This function has been removed from the `RHMF` object to permit faster multiprocessing, in principle.
+    """
+    assert jnp.all(jnp.isfinite(ystar))
+    assert jnp.all(jnp.isfinite(wstar))
+    K, M = G.shape
+    assert ystar.shape == (M, )
+    assert wstar.shape == (M, )
+    converged = False
+    n_iter = 0
+    w = 1. * wstar
+    a = jnp.zeros(K)
+    resid = ystar
+    while not converged:
+        da = self._one_element_step(G, resid, w)
+        a += da
+        if (jnp.max(da * da) / jnp.mean(a * a)) < tol: # input tol not self.tol
+            converged = True
+            break
+        resid = ystar - a @ G
+        w = update_W(wstar, resid, Q2)
+        n_iter += 1
+        if n_iter >= maxiter:
+            print("test(): WARNING: stopping at maximum iteration, not true convergence")
+            converged = True
+    return a @ G
+
+def update_W(w, d, Q2):
+    return w * Q2 / (w * d * d + Q2)
 
 class RHMF():
     def __init__(self, rank, nsigma, A=None, G=None):
@@ -87,7 +119,7 @@ class RHMF():
               self.objective(), self.original_objective())
         self.trained = True
 
-    def test(self, ystar, wstar, maxiter=100, verbose=False, tol=1.e-5):
+    def test(self, ystar, wstar, maxiter=100, tol=1.e-5):
         """
         # inputs:
         `ystar`:     (M, ) array for one observation.
@@ -100,50 +132,18 @@ class RHMF():
         - Checks convergence with the a-step only.
         """
         assert self.trained
-        assert jnp.all(jnp.isfinite(ystar))
-        assert jnp.all(jnp.isfinite(wstar))
-        assert ystar.shape == (self.M, )
-        assert wstar.shape == (self.M, )
-        converged = False
-        n_iter = 0
-        w = 1. * wstar
-        a = jnp.zeros(self.K)
-        while not converged:
-            da = self._one_element_step(self.G, ystar - self.one_star_synthesis(a), w)
-            a += da
-            if (jnp.max(da * da) / jnp.mean(a * a)) < tol: # input tol not self.tol
-                converged = True
-            w = self._update_one_star_W(ystar, wstar, a)
-            n_iter += 1
-            if n_iter >= maxiter:
-                print("test(): WARNING: stopping at maximum iteration, not true convergence")
-                converged = True
-        if verbose:
-            print("test(): converged at iteration:", self.n_iter, ":",
-                  jnp.max(da * da), jnp.mean(a * a),
-                  self.one_star_objective(ystar, w, a),
-                  self.one_star_objective(ystar, wstar, a))
-        return self.one_star_synthesis(a)
+        return test(ystar, wstar, self.G, self.Q2, maxiter=maxiter, tol=tol)
 
     def synthesis(self):
         return self.A.T @ self.G
 
-    def one_star_synthesis(self, a):
-        return a @ self.G
-
     def resid(self):
         return self.Y - self.synthesis()
-
-    def one_star_resid(self, y, a):
-        return y - self.one_star_synthesis(a)
 
     def objective(self):
         if self.A is None or self.G is None:
             return jnp.inf
         return jnp.sum(self.W * self.resid() ** 2)
-
-    def one_star_objective(self, y, w, a):
-        return jnp.sum(w * self.one_star_resid(y, a) ** 2)
 
     def original_chi(self):
         return jnp.sqrt(self.input_W) * self.resid()
@@ -217,10 +217,7 @@ class RHMF():
         self.G = v[:self.K,:]
 
     def _update_W(self):
-        self.W = self.input_W * self.Q2 / (self.input_W * self.resid() ** 2 + self.Q2)
-
-    def _update_one_star_W(self, y, w, a):
-        return w * self.Q2 / (w * self.one_star_resid(y, a) ** 2 + self.Q2)
+        self.W = update_W(self.input_W, self.resid(), self.Q2)
 
     def _all_tests_pass(self):
         boo = True
