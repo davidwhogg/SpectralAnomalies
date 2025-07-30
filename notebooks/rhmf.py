@@ -1,4 +1,4 @@
-"""A
+"""
 # Robust Heteroskedastic Matrix Factorization
 An iteratively-reweighted-least-squares (IRLS) version of HMF.
 
@@ -104,20 +104,20 @@ class RHMF():
         assert jnp.all(jnp.isfinite(wstar))
         assert ystar.shape == (self.M, )
         assert wstar.shape == (self.M, )
-        self.converged = False
-        self.n_iter = 0
+        converged = False
+        n_iter = 0
         w = 1. * wstar
         a = jnp.zeros(self.K)
-        while not self.converged:
+        while not converged:
             da = self._one_element_step(self.G, ystar - self.one_star_synthesis(a), w)
             a += da
             if (jnp.max(da * da) / jnp.mean(a * a)) < tol: # input tol not self.tol
-                self.converged = True
+                converged = True
             w = self._update_one_star_W(ystar, wstar, a)
-            self.n_iter += 1
-            if self.n_iter >= maxiter:
+            n_iter += 1
+            if n_iter >= maxiter:
                 print("test(): WARNING: stopping at maximum iteration, not true convergence")
-                self.converged = True
+                converged = True
         if verbose:
             print("test(): converged at iteration:", self.n_iter, ":",
                   jnp.max(da * da), jnp.mean(a * a),
