@@ -42,7 +42,7 @@ def test(ystar, wstar, G, Q2, maxiter=100, tol=1.e-5):
     a = jnp.zeros(K)
     resid = ystar
     while not converged:
-        da = self._one_element_step(G, resid, w)
+        da = wls(G, resid, w)
         a += da
         if (jnp.max(da * da) / jnp.mean(a * a)) < tol: # input tol not self.tol
             converged = True
@@ -57,6 +57,9 @@ def test(ystar, wstar, G, Q2, maxiter=100, tol=1.e-5):
 
 def update_W(w, d, Q2):
     return w * Q2 / (w * d * d + Q2)
+
+def wls(matrix, y1, w1):
+    return jnp.linalg.solve(matrix * w1 @ matrix.T, matrix * w1 @ y1)
 
 class RHMF():
     def __init__(self, rank, nsigma, A=None, G=None):
@@ -175,10 +178,6 @@ class RHMF():
         assert self.A.shape == (self.K, self.N)
         assert self.G.shape == (self.K, self.M)
 
-    def _one_element_step(self, matrix, y1, w1):
-        return jnp.linalg.solve(matrix * w1 @ matrix.T,
-                                matrix * w1 @ y1)
-
     def _A_step(self):
         """
         ## notes:
@@ -188,7 +187,7 @@ class RHMF():
         if self.A is None:
             self.A = jnp.zeros((self.K, self.N))
         dY = self.resid()
-        dA = jax.vmap(self._one_element_step, in_axes=(None, 0, 0))(self.G, dY, self.W).T
+        dA = jax.vmap(wls, in_axes=(None, 0, 0))(self.G, dY, self.W).T
         self.A += dA
 
     def _G_step(self):
@@ -199,7 +198,7 @@ class RHMF():
         - Converges on an estimate of fractional change in G (not the objective function).
         """
         dY = self.resid()
-        dG = jax.vmap(self._one_element_step, in_axes=(None, 0, 0))(self.A, dY.T, self.W.T).T
+        dG = jax.vmap(wls, in_axes=(None, 0, 0))(self.A, dY.T, self.W.T).T
         self.G += dG
         if self.n_iter % 5 == 0:
             print(f"_G_step() at iteration {self.n_iter + 1}: maximum fractional squared G adjustment is:",
