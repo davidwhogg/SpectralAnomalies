@@ -27,18 +27,33 @@
 
 \paragraph{Prior work:}
 \begin{itemize}
-    \item Sigma clipping!
-    \item IRLS
-    \item The first mathematically rigorous entrant into this space was the Robust PCA method of Cand\'es et al \cite{candes}.
+    \item At the beginning of time, there was principal components analysis (PCA) \cite{pca}, the last universal common ancestor (LUCA) of all machine-learning methods.
+    PCA replaces (or models) the $N\times M$ rectangular data $Y$ with a rectangular matrix $L$ of rank $K<\min(N,M)$ that minimizes the sum of squares of the residual $Y-L$.
+    Like almost all of its machine-learning-method descendants, PCA requires complete, rectangular data; it treats every data point identically.
+    It is extremely sensitive to outliers; a single bad pixel in one data record can spoil many or all of the delivered eigenvectors.
+    After all, it is a model to minimize unmodeled \emph{variance} (squared error), while the empirical variance in a block of data can easily be dominated by one or a few pixels.
+    \item Unrelated to the successes of PCA, humankind evolved, looked at the stars, embraced weighted least squares (chi-squared fitting) \cite{laplace}, got upset about the influences of outliers, and immediately started sigma clipping \cite{sigmaclip}.
+    This has been the dominant method for making weighted-least-squares fits insensitive to rare outliers or data anomalies; that is, to make them more \emph{robust}.
+    [HOGG: Algorithm??]
+    This method is subject to a kind of ``mode collapse'' in which large amounts of data get clipped out and the model just doesn't represent those data at all.
+    \item If ancient astronomers had looked at the statistics literature, they would have seen iteratively reweighted least squares (IRLS) \cite{irls}.
+    This method is really a family of methods; but there is a form you can write down [HOGG DO THAT HERE] in which IRLS has all the good properties of weighted least squares with sigma-clipping (and a similar kind of anomaly threshold parameter), but is way less prone to mode collapse.
+    The IRLS method is a workhorse in many domains; it has been used in astronomy now and then \cite{things}.
+    \item A mathematically rigorous but robust empirical model for (representation for?) data is the robust principal components analysis (Robust-PCA) method of Cand\'es et al \cite{candes}.
     This method attempts to describe the rectangular block of data $Y$ as a sum of a low-rank block $L$ and a sparse block $S$.
     Interestingly, the method attempts to make this exact, such that $Y=L+S$ exactly.
-    When the Robust-PCA algorithm is iterated for finite time, it comes finitely close.
+    When the Robust-PCA algorithm is iterated for finite time, it comes finitely close [HOGG: CORRECT?].
     Fundamentally, the Robust-PCA is an alternation of a singular value decomposition (with a threshold on the singular values) to make $L$ and an outlier identification (with a threshold on the residual) to make $S$.
-    \item HMF by Tsalmantza \& Hogg \cite{hmf}.
+    \item Along a separate thread, Tsalmantza \& Hogg introduced heteroskedastic matrix factorization (HMF) \cite{hmf} as a data-driven dimensionality reduction for astronomical spectra (or other kinds of noisy data).
+    The HMF model of rectangular data $Y$ is the rectangular matrix $L$ of rank $K<\min(N,M)$ that minimizes the chi-squared residual (weighted sum of squares).
+    HMF is a replacement for PCA that does not require complete data (because missing data can be assigned vanishing weights), and it has the satisfying property that every data point is weighted with its associated inverse uncertainty variance, which represents the amount of information it brings.
+    However, HMF is still very sensitive to outliers or anomalies in the data, if they are not weighted appropriately.
 \end{itemize}
-The algorithm that follows is very much inspired by Robust PCA \cite{candes}, but with two changes.
-The first is that the rank $K$ of the low-rank matrix is set by hand, not by a singular-value threshold.
-The second is that there is no explicit sparse component $S$ but rather the residuals are used to soften the cost function.
+The algorithm that follows---Robust-HMF---is very much a mash-up of HMF \cite{hmf} and Robust-PCA \cite{candes}.
+It adds to Robust~PCA data weighting and the ability to handle missing and low-information pixels.
+It sacrifices the nice property of Robust-PCA that it explicitly decomposes the data (or the model for the data) into sparse and low-rank components.
+It also [HOGG THINKS] can't be expressed precisely as the optimization of a single scalar objective function, which makes it harder to analyze mathematically.
+However, empirically, it works very well in standard astronomical contexts, as we will see.
 
 \section{Assumptions and choices}
 
@@ -157,9 +172,13 @@ Trimming down under-observed objects and wavelengths?
 Working on residuals not data?
 Actually output synthetic data not a values?
 
-This method does not just optimize a scalar objective; it is an algorithm.
+HOGG: The fastness at training time depends on jax \cite{jax}.
+The fastness at test time depends on parallelization.
+Currently the parallelization isn't correct; need to batch it maybe to reduce shared-memory overheads?
+
+This method does not [HOGG THINKS] optimize a scalar objective; it is \emph{an algorithm}.
 Therefore, it can't just be put into standard ML form and optimized by contemporary optimization methods like CJ, BFGS, or Adam.
-I think??
+[HOGG thinks??]
 
 \raggedright\footnotesize
 \bibliographystyle{plain}
