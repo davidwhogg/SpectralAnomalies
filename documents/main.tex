@@ -27,7 +27,7 @@
 
 \paragraph{Prior work:}
 \begin{itemize}
-    \item At the beginning of time, there was principal components analysis (PCA) \cite{pca}, the last universal common ancestor (LUCA) of all machine-learning methods.
+    \item At the beginning of time, there was principal components analysis (PCA) \cite{pca}, the last universal common ancestor (LUCA) of all self-supervised (or unsupervised) machine-learning methods.
     PCA replaces (or models) the $N\times M$ rectangular data $Y$ with a rectangular matrix $L$ of rank $K<\min(N,M)$ that minimizes the sum of squares of the residual $Y-L$.
     Like almost all of its machine-learning-method descendants, PCA requires complete, rectangular data; it treats every data point identically.
     It is extremely sensitive to outliers; a single bad pixel in one data record can spoil many or all of the delivered eigenvectors.
@@ -78,7 +78,7 @@ Every $i,j$ pair has an entry, although many of them will have $w_{ij}=0$ becaus
 Because the method will be perfectly insensitive to pixels with $w_{ij}=0$, it doesn't matter what the fill value is for $y_{ij}$, but it makes sense to use something sensible (like zero) for numerical safety.
 
 The method will be unstable unless, for each star $i$, there are many observed wavelengths $j$ ($w_{ij} > 0$ for many pixels $j$, for every $i$).
-Similarly, we will need it to be the case that, for each wavelength $j$, there are many observed stars $i$ observed ($w_{ij} > 0$ for many stars $i$, at every $j$).
+Similarly, we will need it to be the case that, for each wavelength $j$, there are many observed stars $i$ ($w_{ij} > 0$ for many stars $i$, at every $j$).
 Without breaking rectangularity, any stars $i$ or wavelengths $j$ that do not meet these criteria can be dropped from the method prior to start.
 
 The model, conceptually, is that the rectangular data matrix composed of the $y_{ij}$ can be represented, up to noise, as a low-rank matrix plus sparse outliers.
@@ -154,7 +154,8 @@ where the $w^\text{(in)}_{ij}$ are the original input (investigator-specified) d
 $Q$ is the dimensionless soft outlier threshold,
 and $\Delta_{ij}$ is the residual of the (current best-fit) model at datum $y_{ij}$
 This formula \eqref{eq:w-step} looks magical but it's just a zero-safe version of a standard iteratively reweighted least squares method \cite{irls}.
-As the residual $\Delta_{ij}$ gets very large, $w_{ij}$ approaches $Q^2 / \Delta_{ij}^2$; when the dimensionless squared residual $w^\text{(in)}_{ij}\,\Delta_{ij}^2$ is much less than $Q^2$, $w_{ij}\approx w^\text{(in)}_{ij}$.
+As the residual $\Delta_{ij}$ gets very large, $w_{ij}$ approaches $Q^2 / \Delta_{ij}^2$;
+as the residual gets small, $w_{ij}\approx w^\text{(in)}_{ij}$.
 Note that this weight adjustment only makes sense if the weights have units that are the inverse square of the data units.
 
 The a-step, g-step, SVD reorientation, and w-step are iterated to convergence.
@@ -165,7 +166,7 @@ The output of training is the full, converged, $N\times K$ matrix $A$ of coeffic
 At test time, a new data object $y_\ast$ with $M$ pixel values $y_{\ast j}$ is introduced, with associated weights $w_{\ast j}$, including probably some missing data with vanishing weights.
 The a-step and w-step are iterated on this object to convergence, keeping all the components $g_{kj}$ fixed.
 Convergence is judged by a dimensionless estimate of the size of the a-step adjustment.
-The output of test time is $K$ converged coefficients $a_{\ast k}$.
+The output of test time is $K$ converged coefficients $a_{\ast k}$, or equivalently the low-rank representation $\sum_k a_{\ast k}\,g_{kj}$.
 
 \paragraph{Implementation notes}
 Trimming down under-observed objects and wavelengths?
