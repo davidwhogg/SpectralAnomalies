@@ -18,6 +18,7 @@
 \frenchspacing
 
 % math macros
+\DeclareMathOperator{\rank}{rank}
 \DeclareMathOperator{\solve}{solve}
 \DeclareMathOperator{\svd}{svd}
 
@@ -28,10 +29,10 @@
 \paragraph{Prior work:}
 \begin{itemize}
     \item At the beginning of time, there was principal components analysis (PCA) \cite{pca}, the last universal common ancestor (LUCA) of all self-supervised (or unsupervised) machine-learning methods.
-    PCA replaces (or models) the $N\times M$ rectangular data $Y$ with a rectangular matrix $L$ of rank $K<\min(N,M)$ that minimizes the sum of squares of the residual $Y-L$.
+    PCA replaces (or models) the $N\times M$ rectangular data $Y$ with a low-rank matrix $L$ that minimizes the sum of squares of the residual $Y-L$, subject to $\rank(L)=K<\min(N,M)$.
     Like almost all of its machine-learning-method descendants, PCA requires complete, rectangular data; it treats every data point identically.
     It is extremely sensitive to outliers; a single bad pixel in one data record can spoil many or all of the delivered eigenvectors.
-    After all, it is a model to minimize unmodeled \emph{variance} (squared error), while the empirical variance in a block of data can easily be dominated by one or a few pixels.
+    After all, it is a model to minimize unmodeled \emph{variance} (squared error); whereas the empirical variance in a block of data can easily be dominated by one or a few pixels.
     \item Unrelated to the successes of PCA, humankind evolved, looked at the stars, embraced weighted least squares (chi-squared fitting) \cite{laplace}, got upset about the influences of outliers, and immediately started sigma clipping \cite{sigmaclip}.
     This has been the dominant method for making weighted-least-squares fits insensitive to rare outliers or data anomalies; that is, to make them more \emph{robust}.
     [HOGG: Algorithm??]
