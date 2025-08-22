@@ -8,7 +8,9 @@ from tqdm import tqdm
 
 plt.style.use("mpl_drip.custom")
 
-SPECTRA = Path("spectra.npz")
+# SPECTRA = Path("spectra.npz")
+# SPECTRA = Path("spectra_outliers.npz")
+SPECTRA = Path("spectra_anomalies.npz")
 
 
 def read_data(spectra: Path):
@@ -28,21 +30,48 @@ def initial(Y):
     return A, G
 
 
-def a_step(G, Y, W):
-    # G: (K, M); Y, W: (N, M)
-    A_ = jnp.einsum("kj,ij,lj->ikl", G, W, G)  # (N, K, K) where we will batch over i
-    b_ = jnp.einsum("kj,ij,ij->ik", G, W, Y)  # (N, K)
-    return jnp.linalg.solve(A_, b_[..., None]).squeeze(-1)  # (N,K)
+# def a_step(G, Y, W):
+#     # G: (K, M); Y, W: (N, M)
+#     A_ = jnp.einsum("kj,ij,lj->ikl", G, W, G)  # (N, K, K) where we will batch over i
+#     b_ = jnp.einsum("kj,ij,ij->ik", G, W, Y)  # (N, K)
+#     return jnp.linalg.solve(A_, b_[..., None]).squeeze(-1)  # (N,K)
 
 
-def g_step(A, Y, W):
-    # A: (N, K); Y, W: (N, M)
-    A_ = jnp.einsum("ik,ij,il->jkl", A, W, A)  # (M, K, K) where we will batch over j
-    b_ = jnp.einsum("ik,ij,ij->jk", A, W, Y)  # (M, K)
-    return jnp.linalg.solve(A_, b_[..., None]).squeeze(-1).T  # (M, K)
+# def g_step(A, Y, W):
+#     # A: (N, K); Y, W: (N, M)
+#     A_ = jnp.einsum("ik,ij,il->jkl", A, W, A)  # (M, K, K) where we will batch over j
+#     b_ = jnp.einsum("ik,ij,ij->jk", A, W, Y)  # (M, K)
+#     return jnp.linalg.solve(A_, b_[..., None]).squeeze(-1).T  # (M, K)
 
 
-def w_step(A, G, Y, W_in, Q=1):
+def a_step(G, Y, W, rcond=1e-8):
+    # Solve, for each row i:  min || diag(sqrt(w_i)) (y_i^T - G^T a_i^T) ||
+    GT = G.T  # (M,K)
+
+    def solve_row(y_i, w_i):
+        D = jnp.sqrt(w_i)[:, None]  # (M,1)
+        X = D * GT  # (M,K)
+        y = (D.squeeze()) * y_i  # (M,)
+        a_i, *_ = jnp.linalg.lstsq(X, y, rcond=rcond)  # (K,)
+        return a_i
+
+    return jax.vmap(solve_row, in_axes=(0, 0))(Y, W)  # (N,K)
+
+
+def g_step(A, Y, W, rcond=1e-8):
+    # Solve, for each column j: min || diag(sqrt(w_·j)) (y_·j - A g_·j) ||
+    def solve_col(y_j, w_j):
+        D = jnp.sqrt(w_j)[:, None]  # (N,1)
+        X = D * A  # (N,K)
+        y = (D.squeeze()) * y_j  # (N,)
+        g_j, *_ = jnp.linalg.lstsq(X, y, rcond=rcond)  # (K,)
+        return g_j
+
+    G_cols = jax.vmap(solve_col, in_axes=(1, 1))(Y, W)  # (M,K)
+    return G_cols.T
+
+
+def w_step(A, G, Y, W_in, Q=1e5):
     Δ2 = (Y - A @ G) ** 2
     return W_in * Q**2 / (W_in * Δ2 + Q**2)
 
@@ -58,7 +87,8 @@ def iteration(A, G, Y, W, W_in):
     G_ = g_step(A_, Y, W)
     ΔG = jnp.linalg.matrix_norm(G_ - G)
     A_, G_ = reorient(A_, G_)
-    W_ = w_step(A_, G_, Y, W_in)
+    # W_ = w_step(A_, G_, Y, W_in)
+    W_ = W
     return A_, G_, W_, ΔG
 
 
@@ -91,7 +121,7 @@ W_in = deepcopy(W)
 
 
 A, G = initial(Y)
-N_ITERATION = 200
+N_ITERATION = 30
 ΔGs = []
 for _ in tqdm(range(N_ITERATION)):
     A, G, W, ΔG = iteration(A, G, Y, W, W_in)
@@ -125,7 +155,7 @@ plt.show()
 # plt.show()
 
 # Compare 5 random spectra to their reconstructed ones using only M basis functions
-M = 3
+M = 8
 fig, axs = plt.subplots(
     2,
     1,
@@ -137,20 +167,28 @@ fig, axs = plt.subplots(
 
 # Plot observed and reconstructed spectra
 for i in range(5):
+    i += 0
     axs[0].plot(Y[i], label="Observed", c=f"C{i}", lw=3.5)
     axs[0].plot(
         A[i, :M] @ G[:M, :], label=f"Reconstructed (M={M})", linestyle="-", c="k"
     )
 axs[0].set_ylabel("Flux")
 axs[0].legend(loc="best")
+axs[0].set_ylim(0.6, 1.2)
 
 # Plot residuals
 for i in range(5):
+    i += 0
     axs[1].plot(
         Y[i] - (A[i, :M] @ G[:M, :]), label=f"Residual (M={M})", c=f"C{i}", lw=3.5
     )
 axs[1].set_xlabel("Wavelength")
 axs[1].set_ylabel("Flux")
-# axs[1].legend()
+axs[1].set_ylim(-0.04, 0.04)
 
+plt.show()
+
+plt.figure(figsize=(12, 8), layout="compressed")
+plt.imshow(W - W_in, cmap="RdBu")
+plt.colorbar()
 plt.show()

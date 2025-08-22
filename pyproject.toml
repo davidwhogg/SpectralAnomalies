@@ -9,5 +9,6 @@ dependencies = [
     "jax>=0.7.1",
     "matplotlib>=3.10.5",
     "mpl-drip>=1.0.5",
+    "pandas>=2.3.2",
     "tqdm>=4.67.1",
 ]
