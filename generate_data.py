@@ -13,18 +13,21 @@ def gaussian(x, μ, σ):
 
 
 # Dataset
-N_DATA = 500
-LINE_SIGMA = 0.02
-μ_values = rng.uniform(0 + 2 * LINE_SIGMA, 1 - 2 * LINE_SIGMA, N_DATA)
+N_DATA = 200
+LINE_SIGMA = 0.05
+peak_values = rng.uniform(0 + 2 * LINE_SIGMA, 1 - 2 * LINE_SIGMA, N_DATA)
 σ_values = np.repeat(LINE_SIGMA, N_DATA)
 
 
 # Spectra
-N_PIXELS = 200
+N_PIXELS = 50
 NOISE_SIGMA = 0.2
 x = np.linspace(0, 1, N_PIXELS)
-true_spectra = np.array([gaussian(x, μ, σ) for μ, σ in zip(μ_values, σ_values)])
-noise = rng.normal(0, NOISE_SIGMA, true_spectra.shape)
+true_spectra = np.array(
+    [p * gaussian(x, 0.5, σ) for p, σ in zip(peak_values, σ_values)]
+)
+weights = np.ones_like(true_spectra) / NOISE_SIGMA**2
+noise = rng.normal(scale=weights**-2)
 observed_spectra = true_spectra + noise
 
 fig, ax = plt.subplots(figsize=(8, 4), layout="compressed")
@@ -40,7 +43,6 @@ np.savez(
     "spectra.npz",
     observed=observed_spectra,
     true=true_spectra,
-    μ=μ_values,
-    σ=σ_values,
+    weights=weights,
     x=x,
 )
