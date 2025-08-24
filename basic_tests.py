@@ -15,7 +15,7 @@ K_TRUE = 3  # true rank used to generate (not for stage 6)
 K_FIT = 4  # rank used in fitting (keep same for stages 0–2; works for 3–4 too)
 SIGMA = 0.01  # baseline noise (homoskedastic for 0–2)
 Q = 1  # robust scale in chi-units (1..3 reasonable)
-MAX_ITERS = 100
+MAX_ITERS = 200
 TOL = 1e-8
 RNG = np.random.default_rng(SEED)
 
@@ -179,26 +179,49 @@ def w_step(A, G, Y, W_in, Q=Q):
     return W_in * mult
 
 
+def cauchy_loss(r, Q):
+    return (Q**2 / 2) * np.log(1 + r**2 / Q**2)
+
+
+def f_objective(A, G, Y, W_in, Q):
+    return cauchy_loss(
+        r=(Y - A @ G) * np.sqrt(W_in),
+        Q=Q,
+    ).sum()
+
+
 def run_fit(Y, W_in, K=K_FIT, robust=True, max_iters=MAX_ITERS, tol=TOL, Q=Q):
     A, G = initial(Y, K)
     W = W_in.copy()
     dGs = []
-    for _ in range(max_iters):
+    obj = []
+    for i in range(max_iters):
         A_ = a_step(G, Y, W)
         G_ = g_step(A_, Y, W)
         dG = np.linalg.norm(G_ - G)
         dGs.append(dG)
         A, G = A_, G_
+        obj.append(f_objective(A, G, Y, W_in, Q))
         if robust:
             W = w_step(A, G, Y, W_in, Q=Q)
-        if dG < tol:
+        if dG < tol and i != 0:
+            # print(f"finished early after {i}")
             break
-    return A, G, W, np.array(dGs)
+    return A, G, W, np.array(dGs), np.array(obj)
 
 
 # -----------------------------
 # Diagnostics (no ROC—just margins)
 # -----------------------------
+
+
+def plot_loss(loss):
+    fig, ax = plt.subplots(figsize=[6, 4])
+    ax.set_title(r"Robust HMF objective (Tom thinks)")
+    ax.plot(loss)
+    plt.show()
+
+
 def row_mult(W_after, W_in):
     return (W_after / (W_in + 1e-12)).mean(axis=1)
 
@@ -210,8 +233,15 @@ def resid_norms(Y, A, G, W_in):
 
 def stage0_checks(Y, Y_true, W_in):
     print("\n[Stage 0] Clean, no anomalies")
-    A0, G0, W0, _ = run_fit(Y, W_in, robust=False)
-    A1, G1, W1, _ = run_fit(Y, W_in, robust=True)
+    A0, G0, W0, _, loss = run_fit(Y, W_in, robust=False)
+    A1, G1, W1, _, loss_r = run_fit(Y, W_in, robust=True)
+
+    plot_loss(loss_r)
+
+    # fig, ax = plt.subplots(figsize=[6, 4])
+    # ax.set_title(r"Robust HMF objective (Tom thinks)")
+    # ax.plot(loss_r)
+    # plt.show()
 
     mult = W1 / (W_in + 1e-12)
     med_mult = float(np.median(mult))
@@ -243,8 +273,10 @@ def stage0_checks(Y, Y_true, W_in):
 def stage1_checks(Y, Y_true, W_in, row_mask):
     print("\n[Stage 1] Row anomalies (obvious)")
 
-    A0, G0, W0, _ = run_fit(Y, W_in, robust=False)
-    A1, G1, W1, _ = run_fit(Y, W_in, robust=True)
+    A0, G0, W0, _, loss = run_fit(Y, W_in, robust=False)
+    A1, G1, W1, _, loss_r = run_fit(Y, W_in, robust=True)
+
+    plot_loss(loss_r)
 
     m1 = row_mult(W1, W_in)
     r0 = resid_norms(Y, A0, G0, W_in)
@@ -281,8 +313,10 @@ def stage1_checks(Y, Y_true, W_in, row_mask):
 
 def stage2_checks(Y, Y_true, W_in, spike_mask):
     print("\n[Stage 2] Pixel spikes (obvious)")
-    A1, G1, W1, _ = run_fit(Y, W_in, robust=True)
+    A1, G1, W1, _, loss = run_fit(Y, W_in, robust=True)
     mult = W1 / (W_in + 1e-12)
+
+    plot_loss(loss)
 
     med_clean = float(np.median(mult[~spike_mask]))
     med_spikes = float(np.median(mult[spike_mask])) if spike_mask.any() else np.nan
@@ -315,7 +349,7 @@ def stage2_checks(Y, Y_true, W_in, spike_mask):
 def stage3_checks(Y, Y_true, W_in, bad_mask):
     print("\n[Stage 3] Bad pixels (weight=0, flux=0)")
     # run robust fit; the zero-weight pixels should remain zero and not break anything
-    A1, G1, W1, _ = run_fit(Y, W_in, robust=True)
+    A1, G1, W1, _, loss = run_fit(Y, W_in, robust=True)
     assert np.allclose(W1[bad_mask], 0.0), "Bad pixels must remain zero weight"
     assert np.isfinite(A1).all() and np.isfinite(G1).all(), "NaNs/inf in factors"
     print("  #bad pixels:", int(bad_mask.sum()))
@@ -323,6 +357,9 @@ def stage3_checks(Y, Y_true, W_in, bad_mask):
         "  median row mean multiplier:",
         float(np.median((W1 / (W_in + 1e-12)).mean(axis=1))),
     )
+
+    plot_loss(loss)
+
     # show the bad mask and weight multiplier
     fig, ax = plt.subplots(1, 2, figsize=(9, 3), dpi=130, layout="compressed")
     ax[0].imshow(bad_mask, aspect="auto", cmap="gray_r")
@@ -351,8 +388,9 @@ def stage4_checks(Y, Y_true, W_in):
 
     r_med_sq = 0.67448975**2  # median(r^2) for N(0,1) ≈ 0.455
 
+    losses = []
     for q in Qs:
-        A, G, W, _ = run_fit(Y, W_in, robust=True, Q=q)
+        A, G, W, _, loss = run_fit(Y, W_in, robust=True, Q=q)
         mult = W / (W_in + 1e-12)
         med_mult = float(np.median(mult))
         sigma_r = robust_sigma_r(A, G)
@@ -370,9 +408,19 @@ def stage4_checks(Y, Y_true, W_in):
             "Median multiplier not consistent with Q and residual scale"
         )
         assert np.all(mult <= 1.0 + 1e-12), "Weights increased somewhere?"
+        losses.append(loss)
+
+    fig, ax = plt.subplots(figsize=[6, 4])
+    ax.set_title(r"Robust HMF objective, normed to max (Tom thinks)")
+    for q, loss in zip(Qs, losses):
+        ax.plot(loss / loss.max(), label=f"q={Q:.2f}")
+    # ax.legend(loc="best")
+    ax.set_yscale("log")
+    plt.show()
 
     # One quick histogram at Q=2 for eyeballing
-    A2, G2, W2, _ = run_fit(Y, W_in, robust=True, Q=2.0)
+    A2, G2, W2, _, loss = run_fit(Y, W_in, robust=True, Q=2.0)
+
     R2 = np.sqrt(W_in) * (Y - A2 @ G2)
     plt.figure(figsize=(5, 3), dpi=130)
     plt.hist(R2.ravel(), bins=40, density=True, alpha=0.8)
@@ -502,9 +550,11 @@ def stage5_checks(Y, Y_true, W_in, G_true, masks, label="Stage 5"):
     # ...
     print(f"[{label}] Mixed anomalies (same tests we’ll use in Stage 6)")
     # Fit both arms
-    A0, G0, W0, _ = run_fit(Y, W_in, robust=False, Q=Q)
-    A1, G1, W1, _ = run_fit(Y, W_in, robust=True, Q=Q)
+    A0, G0, W0, _, loss = run_fit(Y, W_in, robust=False, Q=Q)
+    A1, G1, W1, _, loss_r = run_fit(Y, W_in, robust=True, Q=Q)
     Yhat0, Yhat1 = A0 @ G0, A1 @ G1
+
+    plot_loss(loss_r)
 
     # Clean-entry mask: exclude weird rows, spikes, and bad pixels
     clean_mask = (~masks["row_weird"])[:, None] & (~masks["spike"]) & (~masks["bad"])
@@ -909,8 +959,10 @@ def run_stage6_suite(steps=None, seed=SEED, Q_in=Q):
         )
 
         # Fit both arms once here so we can also do clean-calibration checks
-        A0, G0, W0, _ = run_fit(Y, W_in, robust=False, Q=Q_in)
-        A1, G1, W1, _ = run_fit(Y, W_in, robust=True, Q=Q_in)
+        A0, G0, W0, _, loss = run_fit(Y, W_in, robust=False, Q=Q_in)
+        A1, G1, W1, _, loss_r = run_fit(Y, W_in, robust=True, Q=Q_in)
+
+        plot_loss(loss_r)
 
         # If this step is clean (no anomalies), do the Stage-4-style calibration sanity check
         if n_rows_weird == 0 and n_pix_spikes == 0 and n_pix_bad == 0:
@@ -934,7 +986,6 @@ def run_stage6_suite(steps=None, seed=SEED, Q_in=Q):
 # -----------------------------
 # Run all stages
 # -----------------------------
-# def main():
 # Stage 0
 # Y0, Y0_true, W0, G0, masks0 = generate_stage0()
 # stage0_checks(Y0, Y0_true, W0)
@@ -961,4 +1012,4 @@ def run_stage6_suite(steps=None, seed=SEED, Q_in=Q):
 # stage5_checks(Y5, Y5_true, W5, G5_true, masks5)
 
 # ----- Stage 6 -----
-run_stage6_suite(["6f_mixed"])
+run_stage6_suite()
