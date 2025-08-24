@@ -1,0 +1,52 @@
+
+\documentclass{article}
+\usepackage{amsmath, amssymb}
+
+\begin{document}
+
+\section*{Heteroskedastic Matrix Factorisation (HMF) with Alternating Least Squares (ALS)}
+
+NOTE: converted to LaTeX via LLM.
+
+Let $f_{ij}$ be observed values for observations $i \in \{1,\dots,N\}$ at coordinates (pixels) $j \in \{1,\dots,M\}$ with known variance $\sigma_{ij}^2$.
+
+We seek coefficients $a_{ik}$ and basis $g_{kj}$ for $k \in \{1,\dots,K\}$ such that
+\begin{align*}
+    f_{ij} \approx \sum_{k=1}^K a_{ik} g_{kj} + e_{ij}, \quad e_{ij} \sim \mathcal{N}(0, \sigma_{ij}^2).
+\end{align*}
+
+Therefore, equivalently, HMF minimises the objective
+\begin{align*}
+    \chi^2(a,g) = \sum_{i=1}^N \sum_{j=1}^M \frac{\Big(f_{ij} - \sum_{k=1}^K a_{ik} g_{kj}\Big)^2}{\sigma_{ij}^2},
+\end{align*}
+which is proportional to the negative log-likelihood.
+
+\subsection*{Non-convexity}
+
+The problem is bi-linear and not convex. ALS will reduce $\chi^2$ monotonically to a stationary point, which will not necessarily be the global minimum.
+
+\section*{ALS Updates}
+
+With $G=\{g_{kj}\}$ fixed, each row of $A=\{a_{ik}\}$ solves a WLS. With $A$ fixed, each column of $G$ solves WLS.
+
+\subsection*{a-step}
+
+\begin{align*}
+A_i &\leftarrow G_i^{-1} F_i, \\
+\big[G_i\big]_{kk'} &= \sum_{j=1}^M \frac{g_{kj} g_{k'j}}{\sigma_{ij}^2}, \\
+\big[F_i\big]_k &= \sum_{j=1}^M \frac{g_{kj} f_{ij}}{\sigma_{ij}^2}.
+\end{align*}
+
+This is WLS for $a_i$ at fixed $G$.
+
+\subsection*{g-step}
+
+\begin{align*}
+G_j &\leftarrow A_j^{-1} F_j, \\
+\big[A_j\big]_{kk'} &= \sum_{i=1}^N \frac{a_{ik} a_{ik'}}{\sigma_{ij}^2}, \\
+\big[F_j\big]_k &= \sum_{i=1}^N \frac{a_{ik} f_{ij}}{\sigma_{ij}^2}.
+\end{align*}
+
+This is WLS for $g_j$ at fixed $A$.
+
+\end{document}
