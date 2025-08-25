@@ -12,22 +12,22 @@
 
 \section*{Setup}
 
-Take measured data $F_{ij}$ with known variances $\sigma_{ij}^2$. 
-We model with low rank:
+Say we have measured data $F_{ij}$ with known variances $\sigma_{ij}^2$. 
+We model this with with lower rank matrices:
 \begin{equation}
     Y_{ij} = a_i^\top g_j,
 \end{equation}
-as matrices
+where
 \begin{align*}
     Y &: N \times M, \\
     A &: N \times K, \\
     G &: K \times M,
 \end{align*}
-such that
+and $K \leq \min(N, M)$ such that
 \begin{equation}
     Y \approx AG.
 \end{equation}
-Assume Gaussian heteroskedastic noise gives $\chi^2$ objective:
+Assuming Gaussian (but independent) heteroskedastic noise gives the usual $\chi^2$ objective:
 \begin{equation}
     \chi^2(A,G) = \sum_{ij} \frac{(Y_{ij} - a_i^\top g_j)^2}{\sigma_{ij}^2}.
 \end{equation}
@@ -49,7 +49,7 @@ This is weighted least squares (WLS) for $a_i$ or $g_j$ given fixed $G$ or $A$.
 
 \section*{Adding Robustness}
 
-Outliers are not dealt with well by $\chi^2$ objective. 
+Outliers are not dealt with well by $\chi^2$ objective because the quadratic loss penalty is too chonky.
 Instead, define
 \begin{equation}
     r_{ij} = \frac{Y_{ij} - a_i^\top g_j}{\sigma_{ij}}, \qquad 
@@ -60,10 +60,13 @@ Switch to a Cauchy likelihood, taking the negative log likelihood as our loss fu
 \begin{equation}
     \rho(r) = \frac{c^2}{2} \log\!\left(1 + \left(\frac{r}{c}\right)^2\right).
 \end{equation}
+The Cauchy distribution has large tails and so the loss penalty while quadratic for small $r$, tends to only $\rho \propto \log{r^2}$ for large r.
+I think actually the nicest way to do this whole argument would be with student's $t$ distribution, because the Cauchy and Gaussian distributions are special cases/limits of that.
+Anyway continuing with Cauchy.
 
 \section*{Auxiliary Form}
 
-Claim: the loss can be expressed for any $r>0$ in the following way
+Claim: the loss can be expressed for any $r$ in the following way
 \begin{equation}
     \rho(r) = \min_{0<w\leq1} \left[ \tfrac{1}{2} w r^2 + \phi(w) \right],
 \end{equation}
