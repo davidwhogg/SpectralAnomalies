@@ -1,0 +1,53 @@
+This is BibTeX, Version 0.99d (TeX Live 2021)
+Capacity: max_strings=200000, hash_size=200000, hash_prime=170003
+The top-level auxiliary file: main.aux
+The style file: plain.bst
+Database file #1: rhmf.bib
+Warning--I didn't find a database entry for "pca"
+Warning--I didn't find a database entry for "laplace"
+Warning--I didn't find a database entry for "sigmaclip"
+Warning--I didn't find a database entry for "irls"
+Warning--I didn't find a database entry for "things"
+Warning--I didn't find a database entry for "jax"
+You've used 2 entries,
+            2118 wiz_defined-function locations,
+            518 strings with 4332 characters,
+and the built_in function-call counts, 674 in all, are:
+= -- 63
+> -- 36
+< -- 0
++ -- 15
+- -- 12
+* -- 55
+:= -- 123
+add.period$ -- 6
+call.type$ -- 2
+change.case$ -- 12
+chr.to.int$ -- 0
+cite$ -- 2
+duplicate$ -- 22
+empty$ -- 48
+format.name$ -- 12
+if$ -- 131
+int.to.chr$ -- 0
+int.to.str$ -- 2
+missing$ -- 2
+newline$ -- 13
+num.names$ -- 4
+pop$ -- 8
+preamble$ -- 1
+purify$ -- 10
+quote$ -- 0
+skip$ -- 15
+stack$ -- 0
+substring$ -- 36
+swap$ -- 2
+text.length$ -- 0
+text.prefix$ -- 0
+top$ -- 0
+type$ -- 8
+warning$ -- 0
+while$ -- 7
+width$ -- 3
+write$ -- 24
+(There were 6 warnings)
