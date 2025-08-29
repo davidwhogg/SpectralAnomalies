@@ -58,7 +58,7 @@ Instead, define
 If $\rho(r) = \tfrac{1}{2} r^2$, we recover the above. 
 Switch to a Cauchy likelihood, taking the negative log likelihood as our loss function:
 \begin{equation}
-    \rho(r) = \frac{c^2}{2} \log\!\left(1 + \left(\frac{r}{c}\right)^2\right).
+    \rho(r) = \frac{Q^2}{2} \log\!\left(1 + \left(\frac{r}{Q}\right)^2\right).
 \end{equation}
 The Cauchy distribution has large tails and so the loss penalty while quadratic for small $r$, tends to only $\rho \propto \log{r^2}$ for large r.
 I think actually the nicest way to do this whole argument would be with student's $t$ distribution, because the Cauchy and Gaussian distributions are special cases/limits of that.
@@ -72,7 +72,7 @@ Claim: the loss can be expressed for any $r$ in the following way
 \end{equation}
 where
 \begin{equation}
-    \phi(w) = \frac{c^2}{2}\,(w - 1 - \log w).
+    \phi(w) = \frac{Q^2}{2}\,(w - 1 - \log w).
 \end{equation}
 Let's prove that. Define
 \begin{align}
@@ -81,7 +81,7 @@ Let's prove that. Define
 Differentiating with respect to $w$:
 \begin{equation}
     \frac{\partial J}{\partial w} 
-    = \tfrac{1}{2}r^2 + \frac{c^2}{2}\left(1 - \frac{1}{w}\right),
+    = \tfrac{1}{2}r^2 + \frac{Q^2}{2}\left(1 - \frac{1}{w}\right),
 \end{equation}
 and
 \begin{align}
@@ -94,17 +94,20 @@ Setting $\partial_w J=0$ yields
     &= \frac{1}{1 + (r/Q)^2},
 \end{align}
 and note that $\hat{w} \in (0, 1]$ because $(r/Q)^2 \geq 0$.
-We now prove the claim. First set $t = (r/c)^2 \geq$, then
+We now prove the claim. First set $t = (r/Q)^2 \geq 0$, then
 \begin{equation}
     \hat{w} = \frac{1}{1+t}, \qquad r^2 = Q^2 t,
 \end{equation}
 such that
 \begin{align}
-    J (\hat{w} ; r) &= \tfrac{1}{2} w r^2 + \phi(\hat{w}) \\
-    \Rightarrow \tfrac{1}{2} w r^2 &= \frac{Q^2}{2} \frac{t}{1 + t} \\
+    J (\hat{w} ; r) &= \tfrac{1}{2} \hat{w} r^2 + \phi(\hat{w}),
+\end{align}
+substituting and simplifying one piece at a time:
+\begin{align}
+    \Rightarrow \tfrac{1}{2} \hat{w} r^2 &= \frac{Q^2}{2} \frac{t}{1 + t} \\
     \Rightarrow \phi(\hat{w}) &= \frac{Q^2}{2} \left( \hat{w} - 1 - \log{\hat{w}} \right) \\
     &= \frac{Q^2}{2} \left( -\frac{t}{1 + t} + \log(1 + t) \right) \\
-    \Rightarrow J (\hat{w} ; r) &= \frac{Q^2}{2} \left( 1 + \left( \tfrac{r}{Q}\right)^2 \right).
+    \Rightarrow J (\hat{w} ; r) &= \frac{Q^2}{2} \log{\left( 1 + \left( \tfrac{r}{Q}\right)^2 \right)}.
 \end{align}
 Thus
 \begin{align}
@@ -139,7 +142,7 @@ This immediately yield's Hogg's procedure
     \text{a-step:} \quad & \text{solve WLS for $A$ with new weights}, \\
     \text{g-step:} \quad & \text{solve WLS for $G$ with new weights}.
 \end{align*}
-where the a-step optises the quadratic
+where the a-step optimises the quadratic
 \begin{align}
     Q(A \, | \, G, W) &= \frac{1}{2} \sum_{ij} w_{ij} r_{ij}^2,
 \end{align}
@@ -182,6 +185,8 @@ This is enough to guarantee that robust HMF with Hogg's w-step converges to the 
     \item This is basically the standard argument for IRLS (iteratively reweighted least squares), didn't require much extra.
     \item I accidentally overloaded my notation a bit ($Q$ is two things). Sorry about that.
     \item This view gives a very natural interpretation for any regularisation, priors or constraints.
+    \item I ignored the re-orienting step (via SVD) in this discussion. I think actually one can leave it until the end, rather than doing it every iteration.
+    \item In theory, we could also just directly optimise the objective with something like stochastic gradient descent, which could be really good when the data set gets large.
 \end{itemize}
 
 \end{document}
