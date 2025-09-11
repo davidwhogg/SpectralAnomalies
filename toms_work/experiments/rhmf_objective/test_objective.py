@@ -1,5 +1,7 @@
-# robust_wstep_sanity.py
-# Minimal, from-scratch verification of the w-step (Stages 0–4)
+# test_objective.py
+# Mostly vibe coded honestly but a nice test at least for my understanding
+# I used this to empircally verify (well, at least not rule-out) that the algorithm maximises a Cauchy likelihood
+
 from __future__ import annotations
 
 from functools import partial
