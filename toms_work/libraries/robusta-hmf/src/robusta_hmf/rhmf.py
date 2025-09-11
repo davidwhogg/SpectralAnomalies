@@ -28,45 +28,51 @@ import jax.numpy as jnp
 
 jax.config.update("jax_enable_x64", True)
 
-def test(ystar, wstar, G, Q2, maxiter=100, tol=1.e-5):
+
+def test(ystar, wstar, G, Q2, maxiter=100, tol=1.0e-5):
     """
     This function has been removed from the `RHMF` object to permit faster multiprocessing, in principle.
     """
     assert jnp.all(jnp.isfinite(ystar))
     assert jnp.all(jnp.isfinite(wstar))
     K, M = G.shape
-    assert ystar.shape == (M, )
-    assert wstar.shape == (M, )
+    assert ystar.shape == (M,)
+    assert wstar.shape == (M,)
     converged = False
     n_iter = 0
-    w = 1. * wstar
+    w = 1.0 * wstar
     a = jnp.zeros(K)
     resid = ystar
     while not converged:
         da = wls(G, resid, w)
         a += da
-        if (jnp.max(da * da) / jnp.mean(a * a)) < tol: # input tol not self.tol
+        if (jnp.max(da * da) / jnp.mean(a * a)) < tol:  # input tol not self.tol
             converged = True
             break
         resid = ystar - a @ G
         w = update_W(wstar, resid, Q2)
         n_iter += 1
         if n_iter >= maxiter:
-            print("test(): WARNING: stopping at maximum iteration, not true convergence")
+            print(
+                "test(): WARNING: stopping at maximum iteration, not true convergence"
+            )
             converged = True
     return a @ G
+
 
 def update_W(w, d, Q2):
     return w * Q2 / (w * d * d + Q2)
 
+
 def wls(matrix, y1, w1):
     return jnp.linalg.solve(matrix * w1 @ matrix.T, matrix * w1 @ y1)
 
-class RHMF():
+
+class RHMF:
     def __init__(self, rank, nsigma, A=None, G=None):
         self.K = int(rank)
         self.nsigma = float(nsigma)
-        self.Q2 = self.nsigma ** 2
+        self.Q2 = self.nsigma**2
         self.A = A
         self.G = G
         self.Y = None
@@ -76,14 +82,14 @@ class RHMF():
     def set_training_data(self, data, weights):
         assert jnp.all(jnp.isfinite(data))
         assert jnp.all(jnp.isfinite(weights))
-        self.Y = jnp.array(data)          # copy, I hope
-        self.input_W = jnp.array(weights) # copy, I hope
+        self.Y = jnp.array(data)  # copy, I hope
+        self.input_W = jnp.array(weights)  # copy, I hope
         self.N, self.M = self.Y.shape
         assert self.Y.shape == self.input_W.shape
-        self.A = None         # because data just changed
+        self.A = None  # because data just changed
         self.trained = False  # because data just changed
-        
-    def train(self, maxiter=jnp.inf, tol=1.e-5):
+
+    def train(self, maxiter=jnp.inf, tol=1.0e-5):
         """
         # inputs:
         `data`:     (N, M) array of observations.
@@ -114,16 +120,26 @@ class RHMF():
                 print("train(): WARNING: failed tests after iteration", self.n_iter)
                 self.converged = True
             if self.n_iter % 100 == 0:
-                print(f"train(): after iteration {self.n_iter}:",
-                      self.objective(), self.original_objective())
+                print(
+                    f"train(): after iteration {self.n_iter}:",
+                    self.objective(),
+                    self.original_objective(),
+                )
             if self.n_iter >= maxiter:
-                print("train(): WARNING: stopping at maximum iteration, not true convergence")
+                print(
+                    "train(): WARNING: stopping at maximum iteration, not true convergence"
+                )
                 self.converged = True
-        print("train(): finished at iteration", self.n_iter, ":",
-              self.objective(), self.original_objective())
+        print(
+            "train(): finished at iteration",
+            self.n_iter,
+            ":",
+            self.objective(),
+            self.original_objective(),
+        )
         self.trained = True
 
-    def test(self, ystar, wstar, maxiter=100, tol=1.e-5):
+    def test(self, ystar, wstar, maxiter=100, tol=1.0e-5):
         """
         # inputs:
         `ystar`:     (M, ) array for one observation.
@@ -160,13 +176,13 @@ class RHMF():
         # bugs:
         - Consider switching SVD to a fast PCA implementation?
         """
-        self.W = 1. * self.input_W # copy not reference
+        self.W = 1.0 * self.input_W  # copy not reference
         if self.A is None:
             if self.G is None:
                 print("_initialize(): initializing with an SVD")
-                u, s, v = jnp.linalg.svd(self.Y, full_matrices=False) # maybe slow
-                self.A = (u[:,:self.K] * s[:self.K]).T
-                self.G = v[:self.K,:]
+                u, s, v = jnp.linalg.svd(self.Y, full_matrices=False)  # maybe slow
+                self.A = (u[:, : self.K] * s[: self.K]).T
+                self.G = v[: self.K, :]
             else:
                 print("_initialize(): initializing with an a-step")
                 self._A_step()
@@ -175,7 +191,9 @@ class RHMF():
                 print("_initialize(): initializing with a g-step")
                 self._G_step()
             else:
-                print("_initialize(): both A and G provided; initialization unnecessary")
+                print(
+                    "_initialize(): both A and G provided; initialization unnecessary"
+                )
         assert self.A.shape == (self.K, self.N)
         assert self.G.shape == (self.K, self.M)
 
@@ -202,8 +220,10 @@ class RHMF():
         dG = jax.vmap(wls, in_axes=(None, 0, 0))(self.A, dY.T, self.W.T).T
         self.G += dG
         if self.n_iter % 5 == 0:
-            print(f"_G_step() at iteration {self.n_iter + 1}: maximum fractional squared G adjustment is:",
-                  jnp.max(dG * dG) / jnp.mean(self.G * self.G))
+            print(
+                f"_G_step() at iteration {self.n_iter + 1}: maximum fractional squared G adjustment is:",
+                jnp.max(dG * dG) / jnp.mean(self.G * self.G),
+            )
         if (jnp.max(dG * dG) / jnp.mean(self.G * self.G)) < self.tol:
             self.converged = True
 
@@ -213,8 +233,8 @@ class RHMF():
         - Consider switching SVD to a fast PCA implementation?
         """
         u, s, v = jnp.linalg.svd(self.A.T @ self.G, full_matrices=False)
-        self.A = (u[:,:self.K] * s[:self.K]).T
-        self.G = v[:self.K,:]
+        self.A = (u[:, : self.K] * s[: self.K]).T
+        self.G = v[: self.K, :]
 
     def _update_W(self):
         self.W = update_W(self.input_W, self.resid(), self.Q2)

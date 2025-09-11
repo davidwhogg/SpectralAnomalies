@@ -2,6 +2,11 @@
 # Minimal, from-scratch verification of the w-step (Stages 0–4)
 from __future__ import annotations
 
+from functools import partial
+from timeit import default_timer
+
+import jax
+import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -18,6 +23,7 @@ Q = 1  # robust scale in chi-units (1..3 reasonable)
 MAX_ITERS = 200
 TOL = 1e-8
 RNG = np.random.default_rng(SEED)
+jax.config.update("jax_enable_x64", True)
 
 
 # -----------------------------
@@ -144,6 +150,15 @@ def initial(Y: np.ndarray, K: int):
     return A, G  # A:(N,K), G:(K,M)
 
 
+@partial(jax.jit, static_argnames="K")
+def initial_jax(Y, K):
+    U, S, VH = jnp.linalg.svd(Y, full_matrices=False)
+    U, S, VH = U[:, :K], S[:K], VH[:K]
+    A = U * S
+    G = VH
+    return A, G  # A:(N,K), G:(K,M)
+
+
 def a_step(G, Y, W, rcond=1e-8):
     GT = G.T
     N = Y.shape[0]
@@ -155,6 +170,21 @@ def a_step(G, Y, W, rcond=1e-8):
         y = (D.ravel()) * Y[i]
         Ai, *_ = np.linalg.lstsq(X, y, rcond=rcond)
         A[i] = Ai
+    return A
+
+
+@jax.jit
+def a_step_jax(G, Y, W, rcond=1e-8):
+    GT = G.T
+    N = Y.shape[0]
+    A = jnp.zeros((N, G.shape[0]), dtype=float)
+    for i in range(N):
+        wi = W[i]
+        D = jnp.sqrt(wi)[:, None]
+        X = D * GT
+        y = (D.ravel()) * Y[i]
+        Ai, *_ = jnp.linalg.lstsq(X, y, rcond=rcond)
+        A = A.at[i].set(Ai)
     return A
 
 
@@ -172,9 +202,32 @@ def g_step(A, Y, W, rcond=1e-8):
     return Gcols.T
 
 
+@jax.jit
+def g_step_jax(A, Y, W, rcond=1e-8):
+    K = A.shape[1]
+    M = Y.shape[1]
+    Gcols = jnp.zeros((M, K), dtype=float)
+    for j in range(M):
+        wj = W[:, j]
+        D = jnp.sqrt(wj)[:, None]
+        X = D * A
+        y = (D.ravel()) * Y[:, j]
+        gj, *_ = jnp.linalg.lstsq(X, y, rcond=rcond)
+        Gcols = Gcols.at[j].set(gj)
+    return Gcols.T
+
+
 def w_step(A, G, Y, W_in, Q=Q):
     # Cauchy IRLS in chi-units
     R2 = (np.sqrt(W_in) * (Y - A @ G)) ** 2
+    mult = (Q**2) / (Q**2 + R2)
+    return W_in * mult
+
+
+@jax.jit
+def w_step_jax(A, G, Y, W_in, Q=Q):
+    # Cauchy IRLS in chi-units
+    R2 = (jnp.sqrt(W_in) * (Y - A @ G)) ** 2
     mult = (Q**2) / (Q**2 + R2)
     return W_in * mult
 
@@ -183,9 +236,21 @@ def cauchy_loss(r, Q):
     return (Q**2 / 2) * np.log(1 + r**2 / Q**2)
 
 
+def cauchy_loss_jax(r, Q):
+    return (Q**2 / 2) * jnp.log(1 + r**2 / Q**2)
+
+
 def f_objective(A, G, Y, W_in, Q):
     return cauchy_loss(
         r=(Y - A @ G) * np.sqrt(W_in),
+        Q=Q,
+    ).sum()
+
+
+@jax.jit
+def f_objective_jax(A, G, Y, W_in, Q):
+    return cauchy_loss_jax(
+        r=(Y - A @ G) * jnp.sqrt(W_in),
         Q=Q,
     ).sum()
 
@@ -204,11 +269,33 @@ def run_fit(Y, W_in, K=K_FIT, robust=True, max_iters=MAX_ITERS, tol=TOL, Q=Q):
         obj.append(f_objective(A, G, Y, W_in, Q))
         if robust:
             W = w_step(A, G, Y, W_in, Q=Q)
-        if dG < tol and i != 0:
-            # print(f"finished early after {i}")
-            break
+        # if dG < tol and i != 0:
+        #     print(f"finished early after {i}")
+        #     break
     return A, G, W, np.array(dGs), np.array(obj)
 
+
+def run_fit_jax(Y, W_in, K=K_FIT, robust=True, max_iters=MAX_ITERS, tol=TOL, Q=Q):
+    A, G = initial_jax(Y, K)
+    W = W_in.copy()
+    dGs = []
+    obj = []
+    for i in range(max_iters):
+        A_ = a_step_jax(G, Y, W)
+        G_ = g_step_jax(A_, Y, W)
+        dG = jnp.linalg.norm(G_ - G)
+        dGs.append(dG)
+        A, G = A_, G_
+        obj.append(f_objective_jax(A, G, Y, W_in, Q))
+        if robust:
+            W = w_step_jax(A, G, Y, W_in, Q=Q)
+        # if dG < tol and i != 0:
+        #     print(f"finished early after {i}")
+        #     break
+    return A, G, W, jnp.array(dGs), jnp.array(obj)
+
+
+run_fit = run_fit_jax
 
 # -----------------------------
 # Diagnostics (no ROC—just margins)
@@ -219,6 +306,7 @@ def plot_loss(loss):
     fig, ax = plt.subplots(figsize=[6, 4])
     ax.set_title(r"Robust HMF objective (Tom thinks)")
     ax.plot(loss)
+    ax.set_yscale("log")
     plt.show()
 
 
@@ -959,8 +1047,11 @@ def run_stage6_suite(steps=None, seed=SEED, Q_in=Q):
         )
 
         # Fit both arms once here so we can also do clean-calibration checks
+        t0 = default_timer()
         A0, G0, W0, _, loss = run_fit(Y, W_in, robust=False, Q=Q_in)
         A1, G1, W1, _, loss_r = run_fit(Y, W_in, robust=True, Q=Q_in)
+        Δt = default_timer() - t0
+        print(f"Fitting complete in {Δt:.2f} s")
 
         plot_loss(loss_r)
 
