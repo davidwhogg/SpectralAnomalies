@@ -13,6 +13,9 @@ from robusta_hmf import (
     WeightedGStep,
 )
 
+jax.config.update("jax_enable_x64", True)
+
+
 key = jax.random.PRNGKey(42)
 N, D, K = 6000, 4500, 4
 X = jax.random.normal(key, (N, D))

@@ -6,30 +6,26 @@ import optax
 from robusta_hmf import (
     ALS_RHMF,
     SGD_RHMF,
+    FastAffine,
     GaussianLikelihood,
-    JointOptimiser,
-    L2Regularizer,
-    Regularizer,
-    Reorienter,
     StudentTLikelihood,
     WeightedAStep,
     WeightedGStep,
 )
 
-# --- Assume you've already defined:
-# RHMFState, GaussianLikelihood, L2Regularizer, WeightedAStep,
-# WeightedGStep, Reorienter, ALS_RHMF, SGD_RHMF
-# (from the refactored "most jax-pure" version with eqx.tree_at)
+# Set 64bit
+jax.config.update("jax_enable_x64", True)
 
 
 # ---------------- Synthetic dataset ----------------
-def make_synthetic(N=50, D=40, K=3, noise=0.1, key=jax.random.PRNGKey(0)):
+def make_synthetic(N, D, K, key, noise=1e-2):
     k1, k2, k3 = jax.random.split(key, 3)
     A_true = jax.random.normal(k1, (N, K))
     G_true = jax.random.normal(k2, (D, K))
-    X_true = A_true @ G_true.T
-    X_noisy = X_true + noise * jax.random.normal(k3, (N, D))
-    return X_true, X_noisy
+    Y_true = A_true @ G_true.T
+    W_data = jnp.ones_like(Y_true) / noise**2
+    Y_noisy = Y_true + noise * jax.random.normal(k3, (N, D))
+    return Y_true, Y_noisy, W_data
 
 
 # ---------------- Helper: error metric ----------------
@@ -41,45 +37,49 @@ def rel_error(X, A, G):
 # ---------------- Main demo ----------------
 if __name__ == "__main__":
     key = jax.random.PRNGKey(42)
-    N, D, K = 60, 45, 4
-    X_true, X = make_synthetic(N, D, K, noise=0.05, key=key)
+    N, D, K = 20000, 2000, 2
+    Y_true, Y, W_data = make_synthetic(N, D, K, noise=0.05, key=key)
 
     # ---- ALS model ----
     als_model = ALS_RHMF(
         likelihood=GaussianLikelihood(),
         a_step=WeightedAStep(ridge=1e-6),
         g_step=WeightedGStep(ridge=1e-6),
-        reorienter=Reorienter(whiten=True, eps=1e-6),
-        regularizer=L2Regularizer(weight=1e-6),
+        rotation=FastAffine(whiten=True, eps=1e-6),
     )
     als_state = als_model.init_state(N, D, K, key)
 
     # Run ALS iterations
     for i in range(50):
-        als_state, loss = als_model.step(X, als_state)
+        als_state, loss = als_model.step(Y, W_data, als_state)
         if i % 10 == 0:
-            err = rel_error(X_true, als_state.A, als_state.G)
-            print(f"[ALS] iter {i:03d} | loss {loss:.4f} | rel_error {err:.4f}")
+            err = rel_error(Y_true, als_state.A, als_state.G)
+            print(
+                f"[ALS] iter {i:03d} | loss {loss:.4f} | rel_error {err:.4f}",
+                flush=True,
+            )
 
     # ---- SGD model ----
     opt = optax.adam(1e-2)
     sgd_model = SGD_RHMF(
         likelihood=GaussianLikelihood(),
         opt=opt,
-        regularizer=L2Regularizer(weight=1e-6),
     )
     sgd_state = sgd_model.init_state(N, D, K, key)
 
     # Run SGD iterations
     for i in range(200):  # needs more steps
-        sgd_state, loss = sgd_model.step(X, sgd_state)
+        sgd_state, loss = sgd_model.step(Y, W_data, sgd_state)
         if i % 20 == 0:
-            err = rel_error(X_true, sgd_state.A, sgd_state.G)
-            print(f"[SGD] iter {i:03d} | loss {loss:.4f} | rel_error {err:.4f}")
+            err = rel_error(Y_true, sgd_state.A, sgd_state.G)
+            print(
+                f"[SGD] iter {i:03d} | loss {loss:.4f} | rel_error {err:.4f}",
+                flush=True,
+            )
 
     # ---- Final check ----
-    als_err = rel_error(X_true, als_state.A, als_state.G)
-    sgd_err = rel_error(X_true, sgd_state.A, sgd_state.G)
+    als_err = rel_error(Y_true, als_state.A, als_state.G)
+    sgd_err = rel_error(Y_true, sgd_state.A, sgd_state.G)
     print("\n=== Final Comparison ===")
     print(f"ALS rel error: {als_err:.4e}")
     print(f"SGD rel error: {sgd_err:.4e}")
