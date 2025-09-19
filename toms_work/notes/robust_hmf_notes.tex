@@ -1,0 +1,192 @@
+
+\documentclass[11pt]{article}
+\usepackage{amsmath, amssymb, amsthm, bm}
+\usepackage[margin=3cm]{geometry}
+
+\title{Robust HMF Notes: proof/sketch of why there \emph{is} an objective}
+\author{Tom Hilder}
+\date{25/08/25}
+
+\begin{document}
+\maketitle
+
+\section*{Setup}
+
+Say we have measured data $F_{ij}$ with known variances $\sigma_{ij}^2$. 
+We model this with with lower rank matrices:
+\begin{equation}
+    Y_{ij} = a_i^\top g_j,
+\end{equation}
+where
+\begin{align*}
+    Y &: N \times M, \\
+    A &: N \times K, \\
+    G &: K \times M,
+\end{align*}
+and $K \leq \min(N, M)$ such that
+\begin{equation}
+    Y \approx AG.
+\end{equation}
+Assuming Gaussian (but independent) heteroskedastic noise gives the usual $\chi^2$ objective:
+\begin{equation}
+    \chi^2(A,G) = \sum_{ij} \frac{(Y_{ij} - a_i^\top g_j)^2}{\sigma_{ij}^2}.
+\end{equation}
+This is bilinear in $(A,G)$ so solvable with alternating least squares.
+
+\subsection*{a-step}
+\begin{align*}
+    A_i &\leftarrow G_i F_i, \\
+    [G_i]_{kk'} &= \sum_{j=1}^m \frac{g_{kj} g_{k'j}}{\sigma_{ij}^2}, \\
+    [F_i]_k &= \sum_{j=1}^m \frac{g_{kj} Y_{ij}}{\sigma_{ij}^2}.
+\end{align*}
+\subsection*{g-step}
+\begin{align*}
+    G_j &\leftarrow A_j^\top F_j, \\
+    [A_j]_{kk'} &= \sum_{i=1}^N \frac{a_{ik} a_{ik'}}{\sigma_{ij}^2}, \\
+    [F_j]_k &= \sum_{i=1}^N \frac{a_{ik} Y_{ij}}{\sigma_{ij}^2}.
+\end{align*}
+This is weighted least squares (WLS) for $a_i$ or $g_j$ given fixed $G$ or $A$.
+
+\section*{Adding Robustness}
+
+Outliers are not dealt with well by $\chi^2$ objective because the quadratic loss penalty is too chonky.
+Instead, define
+\begin{equation}
+    r_{ij} = \frac{Y_{ij} - a_i^\top g_j}{\sigma_{ij}}, \qquad 
+    L(A,G) = \sum_{ij} \rho(r_{ij}).
+\end{equation}
+If $\rho(r) = \tfrac{1}{2} r^2$, we recover the above. 
+Switch to a Cauchy likelihood, taking the negative log likelihood as our loss function:
+\begin{equation}
+    \rho(r) = \frac{Q^2}{2} \log\!\left(1 + \left(\frac{r}{Q}\right)^2\right).
+\end{equation}
+The Cauchy distribution has large tails and so the loss penalty while quadratic for small $r$, tends to only $\rho \propto \log{r^2}$ for large r.
+I think actually the nicest way to do this whole argument would be with student's $t$ distribution, because the Cauchy and Gaussian distributions are special cases/limits of that.
+Anyway continuing with Cauchy.
+
+\section*{Auxiliary Form}
+
+Claim: the loss can be expressed for any $r$ in the following way
+\begin{equation}
+    \rho(r) = \min_{0<w\leq1} \left[ \tfrac{1}{2} w r^2 + \phi(w) \right],
+\end{equation}
+where
+\begin{equation}
+    \phi(w) = \frac{Q^2}{2}\,(w - 1 - \log w).
+\end{equation}
+Let's prove that. Define
+\begin{align}
+    J\left( w ; r \right) &= \tfrac{1}{2} w r^2 + \tfrac{Q^2}{2} \left( w - 1 - \log{w}\right)
+\end{align}
+Differentiating with respect to $w$:
+\begin{equation}
+    \frac{\partial J}{\partial w} 
+    = \tfrac{1}{2}r^2 + \frac{Q^2}{2}\left(1 - \frac{1}{w}\right),
+\end{equation}
+and
+\begin{align}
+    \frac{\partial^2 J}{\partial w^2} = \frac{Q^2}{2} \frac{1}{w^2} > 0, \qquad \forall \, Q,w > 0.
+\end{align}
+thus we know that the critical point minimises $J$.
+Setting $\partial_w J=0$ yields
+\begin{align}
+    \hat{w}(r) &= {\rm argmin}_w \, J (w ; r) \\
+    &= \frac{1}{1 + (r/Q)^2},
+\end{align}
+and note that $\hat{w} \in (0, 1]$ because $(r/Q)^2 \geq 0$.
+We now prove the claim. First set $t = (r/Q)^2 \geq 0$, then
+\begin{equation}
+    \hat{w} = \frac{1}{1+t}, \qquad r^2 = Q^2 t,
+\end{equation}
+such that
+\begin{align}
+    J (\hat{w} ; r) &= \tfrac{1}{2} \hat{w} r^2 + \phi(\hat{w}),
+\end{align}
+substituting and simplifying one piece at a time:
+\begin{align}
+    \Rightarrow \tfrac{1}{2} \hat{w} r^2 &= \frac{Q^2}{2} \frac{t}{1 + t} \\
+    \Rightarrow \phi(\hat{w}) &= \frac{Q^2}{2} \left( \hat{w} - 1 - \log{\hat{w}} \right) \\
+    &= \frac{Q^2}{2} \left( -\frac{t}{1 + t} + \log(1 + t) \right) \\
+    \Rightarrow J (\hat{w} ; r) &= \frac{Q^2}{2} \log{\left( 1 + \left( \tfrac{r}{Q}\right)^2 \right)}.
+\end{align}
+Thus
+\begin{align}
+    \rho(r) &= J ( \hat{w} ; r ) \\
+    &= \min_{0<w\leq1} \left[ \tfrac{1}{2} w r^2 + \phi(w) \right],
+\end{align}
+as claimed.
+
+\section*{Three-Step Algorithm}
+
+Define new objective:
+\begin{equation}
+    J(A,G,W) = \frac{1}{2}\sum_{ij} \left[ w_{ij} r_{ij}^2 + \phi(w_{ij}) \right],
+\end{equation}
+with $r_{ij} = (Y_{ij} - a_i^\top g_j)/\sigma_{ij}$.
+By construction,
+\begin{equation}
+    L(A,G) = \min_W J(A,G,W),
+\end{equation}
+and if
+\begin{align}
+    \hat{W} &= {\rm argmin}_w \, J(A, G, W),
+\end{align}
+then
+\begin{align}
+    \left[ \hat{W} \right]_{ij} &= \hat{w} (r_{ij}) \\
+    &= \frac{1}{1 + (r_{ij} / Q)^2}.
+\end{align}
+This immediately yield's Hogg's procedure
+\begin{align*}
+    \text{w-step:} \quad & w_{ij} \leftarrow \hat{w}(r_{ij}), \\
+    \text{a-step:} \quad & \text{solve WLS for $A$ with new weights}, \\
+    \text{g-step:} \quad & \text{solve WLS for $G$ with new weights}.
+\end{align*}
+where the a-step optimises the quadratic
+\begin{align}
+    Q(A \, | \, G, W) &= \frac{1}{2} \sum_{ij} w_{ij} r_{ij}^2,
+\end{align}
+and the g-step optimises $Q(G \, | \, A, W)$.
+It should be pretty apparent now that the procedure gives the MLE with a Cauchy likelihood.
+
+\section*{Extra convincing (showing that the procedure optimises $L$)}
+
+Consider one outer cycle starting at $(A^{(t)}, G^{(t)})$.  
+Choose $W^{(t)} = \hat{w}(r(A^{(t)},G^{(t)}))$.  
+Then
+\begin{equation}
+    L(A^{(t)}, G^{(t)}) = J(A^{(t)}, G^{(t)}, W^{(t)}).
+\end{equation}
+With frozen $W^{(t)}$, the a- and g-steps minimize $Q(\cdot \,| \,W^{(t)})$.
+Since our total objective is $J = Q + \sum \phi(W^{(t)})$, this implies
+\begin{equation}    
+    J(A^{(t+1)}, G^{(t+1)}, W^{(t)}) \le J(A^{(t)}, G^{(t)}, W^{(t)}).
+\end{equation}
+We're guaranteed to be helped by the w-step again now, so setting
+\begin{align}
+    W^{(t+1)} = \hat{w} \left( r(A^{(t+1)}, G^{(t+1)}) \right),
+\end{align}
+and using our result from the previous section gives
+\begin{equation}
+    J(A^{(t+1)}, G^{(t+1)}, W^{(t+1)}) \le J(A^{(t+1)}, G^{(t+1)}, W^{(t)}).
+\end{equation}
+Thus chaining the inequalities and $L(A,G) = \min_W J(A, G, W)$ gives
+\begin{equation}
+    L(A^{(t+1)}, G^{(t+1)}) \le L(A^{(t)}, G^{(t)}).
+\end{equation}
+This is enough to guarantee that robust HMF with Hogg's w-step converges to the Cauchy MLE.
+
+\section*{Extra Notes}
+
+\begin{itemize}
+    \item The update $w_{ij} \leftarrow \hat{w}(r_{ij})$ is exactly Hogg's update rule if one combines $\sigma_{ij}$ into the weights: 
+    $\tilde{w}_{ij} = w_{ij}/\sigma_{ij}^2$. I kept the updated weights separate to the data variances since it makes the connection to the MLE clearer (in my mind).
+    \item Different $\rho$ losses (negative log likelihoods) yield different w-step rules.
+    \item This is basically the standard argument for IRLS (iteratively reweighted least squares), didn't require much extra.
+    \item I accidentally overloaded my notation a bit ($Q$ is two things). Sorry about that.
+    \item This view gives a very natural interpretation for any regularisation, priors or constraints.
+    \item I ignored the re-orienting step (via SVD) in this discussion. I think actually one can leave it until the end, rather than doing it every iteration.
+    \item In theory, we could also just directly optimise the objective with something like stochastic gradient descent, which could be really good when the data set gets large.
+\end{itemize}
+
+\end{document}

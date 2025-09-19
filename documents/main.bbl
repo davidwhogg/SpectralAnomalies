@@ -1,0 +1,14 @@
+\begin{thebibliography}{1}
+
+\bibitem{candes}
+Emmanuel~J Cand{\`e}s, Xiaodong Li, Yi~Ma, and John Wright.
+\newblock Robust principal component analysis?
+\newblock {\em Journal of the ACM}, 58(3):1--37, 2011.
+
+\bibitem{hmf}
+P~Tsalmantza and David~W Hogg.
+\newblock A data-driven model for spectra: Finding double redshifts in the
+  {Sloan Digital Sky Survey}.
+\newblock {\em The Astrophysical Journal}, 753(2):122, 2012.
+
+\end{thebibliography}

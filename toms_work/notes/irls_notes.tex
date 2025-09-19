@@ -1,0 +1,155 @@
+
+\documentclass{article}
+\usepackage{amsmath, amssymb}
+
+\begin{document}
+
+\section*{Iteratively Reweighted Least Squares (IRLS)}
+
+NOTE: converted to LaTeX via LLM.
+
+Two use cases: 
+\begin{itemize}
+    \item Robust regression / M-estimation
+    \item GLMs
+\end{itemize}
+
+Here we only care about robust regression.
+
+Given $X \in \mathbb{R}^{n \times p}$, $y \in \mathbb{R}^n$,
+
+\begin{align*}
+    \hat{\beta} &= \arg \min_\beta L(\beta) \\
+    &= \sum_{i=1}^n \rho(r_i(\beta)), \quad 
+    r_i(\beta) = \frac{y_i - x_i^T \beta}{\sigma_i}.
+\end{align*}
+
+where $\rho$ is convex, even, and increasing in $|r|$.
+
+Define score function $\psi(r) = \rho'(r)$ and weight function
+\[
+w(r_i) = \frac{\psi(r_i)}{r_i \, \sigma_i^2}, 
+\quad (with \; w(0) := \rho''(0)).
+\]
+
+We can write robust weights $w(r) \equiv \frac{\psi(r)}{r}$ 
+and precision weights $\lambda_i \equiv \tfrac{1}{\sigma_i^2}$ such that
+
+\[
+w_{\text{tot}, i} = \lambda_i \, w(r_i),
+\]
+which will be used in WLS.
+
+\section*{Aside: Majorize-Minimize (MM)}
+
+We want 
+\[
+\hat{\theta} = \arg\min_\theta f(\theta).
+\]
+
+MM iterates at $\theta^{(t)}$ using a surrogate $g(\theta|\theta^{(t)})$ such that
+
+\begin{enumerate}
+    \item Majorize condition:
+    \[
+    f(\theta) \le g(\theta|\theta^{(t)}) \quad \forall \theta, 
+    \qquad f(\theta^{(t)}) = g(\theta^{(t)}|\theta^{(t)}).
+    \]
+    \item Minimization step:
+    \[
+    \theta^{(t+1)} = \arg\min_\theta g(\theta|\theta^{(t)}).
+    \]
+\end{enumerate}
+
+This generalizes EM. Proof (sketch):
+\begin{align*}
+    f(\theta^{(t+1)}) &\le g(\theta^{(t+1)}|\theta^{(t)}) 
+    \le g(\theta^{(t)}|\theta^{(t)}) = f(\theta^{(t)}).
+\end{align*}
+
+For IRLS we replace $\rho(r)$ with a quadratic tangent at the current point and solve WLS.
+
+\section*{Key Idea}
+
+A (quasi-)Newton or MM step for $L$ is equivalent to solving WLS with weights $w_i = w(r_i)$.
+
+At iterate $\beta^{(t)}$, set
+\[
+W^{(t)} = \mathrm{diag}(w(r_1^{(t)}), \dots, w(r_n^{(t)})),
+\]
+and solve
+\[
+\beta^{(t+1)} = \arg\min_\beta \sum_{i=1}^n w_i^{(t)} (y_i - x_i^T \beta)^2
+= (X^T W X)^{-1} X^T W y.
+\]
+
+\subsection*{Justifying the weights}
+
+\textbf{Quasi-Newton view:}
+\begin{align*}
+\nabla L(\beta) &= -X^T \mathrm{diag}\!\left(\tfrac{1}{\sigma_i} \psi(r_i)\right), \\
+\nabla^2 L(\beta) &= X^T \mathrm{diag}\!\left(\tfrac{1}{\sigma_i^2} \psi'(r_i)\right) X.
+\end{align*}
+
+Since $\psi'(r)$ is messy, approximate with $\psi'(r) \approx \tfrac{\psi(r)}{r}$,
+so
+\[
+H = X^T \mathrm{diag}(w_i) X.
+\]
+
+\textbf{MM view:} Each $\rho(r)$ is concave in $u=r^2$, so linearizing in $u$ gives
+\[\rho(r) \le \tfrac{1}{2} w(r^{(t)}) r^2 + \text{const}.\]
+Substituting $r_i = (y_i - x_i^T \beta)/\sigma_i$ produces a quadratic surrogate.
+
+\section*{Canonical examples}
+
+\textbf{Gaussian:}
+\begin{align*}
+\rho(r) &= \tfrac{1}{2} r^2, \\
+\psi(r) &= r, \\
+w(r) &= 1, \\
+w_{\text{tot}, i} &= \tfrac{1}{\sigma_i^2}.
+\end{align*}
+$\Rightarrow$ standard GLS.
+
+\textbf{Huber:}
+\begin{align*}
+w(r) &= 1, \quad |r|\le c, \\
+w(r) &= \tfrac{c}{|r|}, \quad \text{else}, \\
+w_{\text{tot}, i} &= \frac{1}{\sigma_i^2}\times (\le 1).
+\end{align*}
+
+\textbf{Cauchy:}
+\begin{align*}
+\rho(r) &= \tfrac{c^2}{2} \log\!\left(1+\frac{r^2}{c^2}\right), \\
+\psi(r) &= \frac{c^2 r}{c^2 + r^2}, \\
+w(r) &= \frac{1}{1+r^2/c^2}, \\
+w_{\text{tot}, i} &= \frac{1}{\sigma_i^2 (1+r^2/c^2)}.
+\end{align*}
+
+Note: $r_i = (y_i - x_i^T \beta)/\sigma_i$.
+
+\section*{Practicalities for robust regression}
+
+\subsection*{1. Initialization}
+\begin{itemize}
+    \item OLS / GLS
+    \item LTS / S-estimator
+    \item IRLS is local, so initialization matters.
+\end{itemize}
+
+\subsection*{2. Convergence}
+\begin{itemize}
+    \item Track $\|\beta^{(t+1)} - \beta^{(t)}\|$
+    \item Track $L(\beta) = \sum \rho(r_i)$
+    \item For convex $\rho$ (Huber, Cauchy), convergence is guaranteed for full-rank $X$.
+\end{itemize}
+
+\subsection*{3. Numerical stability}
+\begin{itemize}
+    \item Normal equations $(X^T W X)\beta = X^T W y$ can be ill-conditioned if weights are tiny or $X$ is collinear.
+    \item Use QR/Cholesky with damping.
+    \item Ridge: $(X^T W X + \lambda I)$.
+\end{itemize}
+
+\end{document}

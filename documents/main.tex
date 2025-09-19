@@ -24,6 +24,10 @@
 
 \begin{document}
 
+\title{RHMF for astronomy}
+\author{David W. Hogg, Thomas Hilder}
+\maketitle
+
 \section{Introduction}
 
 \paragraph{Prior work:}
@@ -54,6 +58,7 @@ The algorithm that follows---Robust-HMF---is very much a mash-up of HMF \cite{hm
 It adds to Robust~PCA data weighting and the ability to handle missing and low-information pixels.
 It sacrifices the nice property of Robust-PCA that it explicitly decomposes the data (or the model for the data) into sparse and low-rank components.
 It also [HOGG THINKS] can't be expressed precisely as the optimization of a single scalar objective function, which makes it harder to analyze mathematically.
+[TOM: I think we can express things either as a heavy-tailed MLE, or as a latent-variance hierarchical model with a Gaussian likelihood. See below and Appendix. The latter is undercooked, I only started thinking about it this morning, but I think it's ultimately the nicest. Either way, we have nice statistics.]
 However, empirically, it works very well in standard astronomical contexts, as we will see.
 
 \section{Assumptions and choices}
@@ -94,6 +99,7 @@ and the outliers and noise can't really be distinguished from one another.
 That is, the model is low-rank plus outliers plus noise but really it can be seen as just low-rank plus residuals.
 
 HOGG: probabilistic interpretation of chi-squared, and then probabilistic interpretation of IRLS in this context; is there one?
+TOM: Yes, see below, especially final section of Appendix~\ref{sec:proof} where I mention some generalisation stuff. If the part about hierarchical latent variances is unclear let me know and I can expand it.
 
 \paragraph{Training:}
 Training of this model proceeds by alternating least squares with IRLS mixed in.
@@ -146,7 +152,7 @@ This looks like the following:
 similar to the SVD-based initialization described above, but now acting on the low-rank model rather than the data.
 Importantly this operation does not change the model predictions \emph{at all}; it just re-scales, re-orients, and re-orders the eigenvectors.
 
-The \textbf{w-step} updates the weights $w_{ij}$ for robustness:
+The \textbf{w-step} updates the weights $w_{ij}$ for robustness [TOM: actually, I think for the equivalence with the objective, the $w^\text{(in)}_{ij}$ should not be the original input weights but those from the previous step. Maybe this is what is meant here anyway?]:
 \begin{align}
     w_{ij} &\leftarrow w^\text{(in)}_{ij}\,\frac{Q^2}{w^\text{(in)}_{ij}\,\Delta_{ij}^2 + Q^2} \label{eq:w-step} \\
     \Delta_{ij} &= y_{ij} - \sum_{k=1}^K a_{ik}\,g_{kj} ~,
@@ -162,6 +168,40 @@ Note that this weight adjustment only makes sense if the weights have units that
 The a-step, g-step, SVD reorientation, and w-step are iterated to convergence.
 Convergence is judged by a dimensionless estimate of the size of the g-step adjustment.
 The output of training is the full, converged, $N\times K$ matrix $A$ of coefficients $a_{ik}$ and the full, converged, $K\times M$ matrix $G$ of components $g_{kj}$.
+
+\subsection{Objective}
+
+In the previous section, the method was described as an algorithm.
+It turns out that the method can also be described as a maximum likelihood estimator with a heavy-tailed noise model.
+Without the w-step, the method is just HMF \cite{hmf}, which is a maximum likelihood estimator under a Gaussian likelihood.
+The objective function is the chi-squared statistic, proportional to the negative log-likelihood:
+\begin{align}
+    r_{ij} = \frac{y_{ij} - a_i^\top g_j}{\sigma_{ij}}, \qquad 
+    \chi^2(A,G) = \sum_{ij} r_{ij}^2
+\end{align}
+This objective is bilinear in $(A,G)$ so solvable with alternating least squares, as described above.
+However, the quadratic penalty makes this setup very fragile when there are outliers or anomalies in the data.
+% By fragile, we mean that the delivered components $g_k$ can be dominated by a few outliers, and the delivered coefficients $a_i$ can be dominated by a few outlier pixels.
+% This results in a poor representation, and poor predictions.
+
+To combat this fragility, we added robustness via the w-step.
+In the context of maximum likelihood estimation, we can instead (equivalently) think of replacing the Gaussian likelihood with a heavy-tailed likelihood, resulting in a sub-quadratic penalty for large residuals, down-weighting their influence.
+Choosing a Cauchy likelihood, the negative log-likelihood is proportional to our new objective function
+\begin{align}
+    L(A,G) &= \sum_{ij} \frac{Q^2}{2} \log\!\left(1 + \left(\frac{r_{ij}}{Q}\right)^2\right),
+\end{align}
+where $Q$ is the same dimensionless soft outlier threshold as above.
+For small residuals $r_{ij}\ll Q$, the penalty is still roughly quadratic, while for large residuals $r_{ij}\gg Q$, the penalty is roughly logarithmic.
+In Appendix~\ref{sec:proof}, we show that including the w-step described above is exactly equivalent to minimizing this objective function.
+
+This objective function is no longer bilinear in $(A,G)$, but it is still biconvex, in that it is convex in $A$ for fixed $G$ and convex in $G$ for fixed $A$.
+The existence of the objective means however that we are not actually forced to do the w-step and optimise the latent weights $w_{ij}$.
+We could instead directly optimise the objective with modern gradient-based optimizers like Adam or L-BFGS.
+This would be particularly attractive for very large data where the matrices get huge and the ALS becomes expensive, slow, and memory intensive.
+In this case, we could use mini-batches stochastic gradient descent to simultaneously optimize $A$ and $G$.
+It would be pertinent to include a good reorientation step every $\sim10$-$100$ iterations in this case, due to the degeneracies mentioned above.
+[TOM: I actually don't know (yet) of a good reorientation steps here that works well for mini-batches and avoids instantiating big matrices. I'm sure something exists but I haven't looked yet.]
+
 
 \paragraph{Test time:}
 At test time, a new data object $y_\ast$ with $M$ pixel values $y_{\ast j}$ is introduced, with associated weights $w_{\ast j}$, including probably some missing data with vanishing weights.
@@ -181,6 +221,133 @@ Currently the parallelization isn't correct; need to batch it maybe to reduce sh
 This method does not [HOGG THINKS] optimize a scalar objective; it is \emph{an algorithm}.
 Therefore, it can't just be put into standard ML form and optimized by contemporary optimization methods like CJ, BFGS, or Adam.
 [HOGG thinks??]
+[TOM: I think we can remove this now.]
+
+\appendix
+
+\section{Proof of objective} \label{sec:proof}
+
+\subsection{Auxiliary Form}
+
+Claim: the loss can be expressed for any $r$ in the following way
+\begin{equation}
+    \rho(r) = \min_{0<w\leq1} \left[ \tfrac{1}{2} w r^2 + \phi(w) \right],
+\end{equation}
+where
+\begin{equation}
+    \phi(w) = \frac{Q^2}{2}\,(w - 1 - \log w).
+\end{equation}
+Let's prove that. Define
+\begin{align}
+    J\left( w ; r \right) &= \tfrac{1}{2} w r^2 + \tfrac{Q^2}{2} \left( w - 1 - \log{w}\right)
+\end{align}
+Differentiating with respect to $w$:
+\begin{equation}
+    \frac{\partial J}{\partial w} 
+    = \tfrac{1}{2}r^2 + \frac{Q^2}{2}\left(1 - \frac{1}{w}\right),
+\end{equation}
+and
+\begin{align}
+    \frac{\partial^2 J}{\partial w^2} = \frac{Q^2}{2} \frac{1}{w^2} > 0, \qquad \forall \, Q,w > 0.
+\end{align}
+thus we know that the critical point minimises $J$.
+Setting $\partial_w J=0$ yields
+\begin{align}
+    \hat{w}(r) &= {\rm argmin}_w \, J (w ; r) \\
+    &= \frac{1}{1 + (r/Q)^2},
+\end{align}
+and note that $\hat{w} \in (0, 1]$ because $(r/Q)^2 \geq 0$.
+We now prove the claim. First set $t = (r/Q)^2 \geq 0$, then
+\begin{equation}
+    \hat{w} = \frac{1}{1+t}, \qquad r^2 = Q^2 t,
+\end{equation}
+such that
+\begin{align}
+    J (\hat{w} ; r) &= \tfrac{1}{2} \hat{w} r^2 + \phi(\hat{w}),
+\end{align}
+substituting and simplifying one piece at a time:
+\begin{align}
+    \Rightarrow \tfrac{1}{2} \hat{w} r^2 &= \frac{Q^2}{2} \frac{t}{1 + t} \\
+    \Rightarrow \phi(\hat{w}) &= \frac{Q^2}{2} \left( \hat{w} - 1 - \log{\hat{w}} \right) \\
+    &= \frac{Q^2}{2} \left( -\frac{t}{1 + t} + \log(1 + t) \right) \\
+    \Rightarrow J (\hat{w} ; r) &= \frac{Q^2}{2} \log{\left( 1 + \left( \tfrac{r}{Q}\right)^2 \right)}.
+\end{align}
+Thus
+\begin{align}
+    \rho(r) &= J ( \hat{w} ; r ) \\
+    &= \min_{0<w\leq1} \left[ \tfrac{1}{2} w r^2 + \phi(w) \right],
+\end{align}
+as claimed.
+
+\subsection{Three-Step Algorithm}
+
+Define new objective:
+\begin{equation}
+    J(A,G,W) = \frac{1}{2}\sum_{ij} \left[ w_{ij} r_{ij}^2 + \phi(w_{ij}) \right],
+\end{equation}
+with $r_{ij} = (Y_{ij} - a_i^\top g_j)/\sigma_{ij}$.
+By construction,
+\begin{equation}
+    L(A,G) = \min_W J(A,G,W),
+\end{equation}
+and if
+\begin{align}
+    \hat{W} &= {\rm argmin}_w \, J(A, G, W),
+\end{align}
+then
+\begin{align}
+    \left[ \hat{W} \right]_{ij} &= \hat{w} (r_{ij}) \\
+    &= \frac{1}{1 + (r_{ij} / Q)^2}.
+\end{align}
+This immediately yield's Hogg's procedure
+\begin{align*}
+    \text{w-step:} \quad & w_{ij} \leftarrow \hat{w}(r_{ij}), \\
+    \text{a-step:} \quad & \text{solve WLS for $A$ with new weights}, \\
+    \text{g-step:} \quad & \text{solve WLS for $G$ with new weights}.
+\end{align*}
+where the a-step optimises the quadratic
+\begin{align}
+    Q(A \, | \, G, W) &= \frac{1}{2} \sum_{ij} w_{ij} r_{ij}^2,
+\end{align}
+and the g-step optimises $Q(G \, | \, A, W)$.
+It should be pretty apparent now that the procedure gives the MLE with a Cauchy likelihood.
+
+\subsection{Extra convincing (showing that the procedure optimises $L$)}
+
+Consider one outer cycle starting at $(A^{(t)}, G^{(t)})$.  
+Choose $W^{(t)} = \hat{w}(r(A^{(t)},G^{(t)}))$.  
+Then
+\begin{equation}
+    L(A^{(t)}, G^{(t)}) = J(A^{(t)}, G^{(t)}, W^{(t)}).
+\end{equation}
+With frozen $W^{(t)}$, the a- and g-steps minimize $Q(\cdot \,| \,W^{(t)})$.
+Since our total objective is $J = Q + \sum \phi(W^{(t)})$, this implies
+\begin{equation}    
+    J(A^{(t+1)}, G^{(t+1)}, W^{(t)}) \le J(A^{(t)}, G^{(t)}, W^{(t)}).
+\end{equation}
+We're guaranteed to be helped by the w-step again now, so setting
+\begin{align}
+    W^{(t+1)} = \hat{w} \left( r(A^{(t+1)}, G^{(t+1)}) \right),
+\end{align}
+and using our result from the previous section gives
+\begin{equation}
+    J(A^{(t+1)}, G^{(t+1)}, W^{(t+1)}) \le J(A^{(t+1)}, G^{(t+1)}, W^{(t)}).
+\end{equation}
+Thus chaining the inequalities and $L(A,G) = \min_W J(A, G, W)$ gives
+\begin{equation}
+    L(A^{(t+1)}, G^{(t+1)}) \le L(A^{(t)}, G^{(t)}).
+\end{equation}
+This is enough to guarantee that robust HMF with Hogg's w-step converges to the Cauchy MLE.
+
+\subsection{Generalisation}
+
+This procedure can be generalised to other likelihoods, their associated $\rho(r)$ functions, and their associated $\phi(w)$ functions.
+The only requirement is that the $\rho(r)$ function can be expressed in the auxiliary form above, such that the update rule can be derived.
+This will be generally true for any $\rho(r)$ that is symmetric, monotonically increasing in $|r|$, and sub-quadratic [TOM THINKS].
+It might be worth actually writing down this whole thing in terms of student's t-distribution, which is a generalisation of both the Cauchy and Gaussian distributions.
+Student's t-distribution also comes with the nice interpretation of marginalising out an unknown variance with a inverse Gamma prior, where actually the update rule is the posterior mean of the variance given the data and the prior, such that the $w_{ij}$ weights are latent inverse variances in a now hierarchical model with a Gaussian likelihood \cite{things}.
+Of course, the choices here already have this interpretation, because the Cauchy is a student's t with one degree of freedom, and so the latent variance has an inverse Gamma prior with one degree of freedom.
+[TOM: as is this is under-explained and under-developed, but I think it's a good idea. I find the idea that the weights are latent variances in a hierarchical model appealing, since we can still interpret the method as having a Gaussian likelihood, just with unknown variances that we marginalise out (with a inverse Gamma prior on the variances or Gamma on the precisions). This \emph{feels} more natural that just saying we have a Cauchy likelihood (I don't expect the data to actually be Cauchy distributed), but this is just interpretation in the end anyway.]
 
 \raggedright\footnotesize
 \bibliographystyle{plain}
