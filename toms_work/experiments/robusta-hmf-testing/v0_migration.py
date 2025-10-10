@@ -1,6 +1,7 @@
 # v0.py
 # Fit anything
 
+import jax
 import matplotlib.pyplot as plt
 import numpy as np
 from collect import (
@@ -10,6 +11,13 @@ from collect import (
     nans_mask,
     read_meta,
     read_spectra,
+)
+from robusta_hmf import (
+    ALS_RHMF,
+    CauchyLikelihood,
+    FastAffine,
+    WeightedAStep,
+    WeightedGStep,
 )
 from robusta_hmf.rhmf_old import RHMF
 
@@ -113,20 +121,63 @@ W[~spec_nans_mask] = np.nan
 Y = np.nan_to_num(Y)
 W = np.nan_to_num(W)
 
-rhmf = RHMF(rank=30, nsigma=2.0)
+rank = 5
+tolerance = 1e-2
+rhmf = RHMF(rank=rank, nsigma=2.0)
 rhmf.set_training_data(Y, weights=W)
-rhmf.train(tol=1e-4)
+rhmf.train(tol=tolerance)
 
-plt.figure()
-plt.title("Residuals")
-plt.imshow(rhmf.resid(), aspect="auto", cmap="RdBu", vmin=-0.1, vmax=0.1)
-plt.colorbar()
+
+key = jax.random.PRNGKey(42)
+N, D = Y.shape
+
+# ---- ALS model ----q
+als_model = ALS_RHMF(
+    likelihood=CauchyLikelihood(scale=2.0),
+    a_step=WeightedAStep(),
+    g_step=WeightedGStep(),
+    rotation=FastAffine(whiten=True, eps=1e-6),
+)
+als_state = als_model.init_state(N, D, rank, key)
+# als_state = als_model.custom_init(N, D, rank, key)
+
+# Run ALS iterations
+for i in range(200):
+    # while True:
+    G_prev = als_state.G
+    als_state, loss = als_model.step(Y, W, als_state)
+    dG = als_state.G - G_prev
+    G_frac = np.max(dG * dG) / np.mean(als_state.G * als_state.G)
+    print(G_frac)
+    if i % 10 == 0:
+        print(
+            f"[ALS] iter {i:03d} | loss {loss:.4f}",
+            flush=True,
+        )
+    # if i > 10 and G_frac < tolerance:
+    # break
+
+
+als_state.A.shape
+als_state.G.shape
+
+new_residuals = Y - als_state.A @ als_state.G.T
+new_weights = als_model.likelihood.weights_total(Y, W, als_state.A, als_state.G) / W
+
+
+fig, ax = plt.subplots(1, 2, figsize=[10, 4], layout="compressed")
+fig.suptitle("Residuals")
+ax[0].imshow(rhmf.resid(), aspect="auto", cmap="RdBu", vmin=-0.1, vmax=0.1)
+ax[0].set_title("Hogg (ALS)")
+ax[1].imshow(new_residuals, aspect="auto", cmap="RdBu", vmin=-0.1, vmax=0.1)
+ax[1].set_title("Hilder (ALS)")
+# plt.colorbar()
 plt.show()
 
-plt.figure(dpi=100, figsize=[18, 7], layout="compressed")
-plt.title("Weights")
-plt.imshow(rhmf.W / rhmf.input_W, aspect="auto", cmap="viridis", vmin=0, vmax=1)
-plt.colorbar()
+fig, ax = plt.subplots(1, 2, figsize=[10, 4], layout="compressed")
+fig.suptitle("Weights")
+ax[0].imshow(rhmf.W / rhmf.input_W, aspect="auto", cmap="viridis", vmin=0, vmax=1)
+ax[1].imshow(new_weights, aspect="auto", cmap="viridis", vmin=0, vmax=1)
 plt.show()
 
 plt.figure(dpi=100, figsize=[18, 7], layout="compressed")

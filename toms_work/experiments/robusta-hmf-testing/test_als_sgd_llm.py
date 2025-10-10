@@ -12,6 +12,7 @@ from robusta_hmf import (
     WeightedAStep,
     WeightedGStep,
 )
+from robusta_hmf.rotations import SlowAffineBigSVD
 
 # Set 64bit
 jax.config.update("jax_enable_x64", True)
@@ -37,15 +38,16 @@ def rel_error(X, A, G):
 # ---------------- Main demo ----------------
 if __name__ == "__main__":
     key = jax.random.PRNGKey(42)
-    N, D, K = 20000, 2000, 2
+    N, D, K = 100, 20, 2
     Y_true, Y, W_data = make_synthetic(N, D, K, noise=0.05, key=key)
 
     # ---- ALS model ----
     als_model = ALS_RHMF(
-        likelihood=GaussianLikelihood(),
+        likelihood=StudentTLikelihood(nu=3.0, scale=0.5),
         a_step=WeightedAStep(ridge=1e-6),
         g_step=WeightedGStep(ridge=1e-6),
         rotation=FastAffine(whiten=True, eps=1e-6),
+        # rotation=SlowAffineBigSVD(eps=1e-6),
     )
     als_state = als_model.init_state(N, D, K, key)
 
@@ -62,7 +64,7 @@ if __name__ == "__main__":
     # ---- SGD model ----
     opt = optax.adam(1e-2)
     sgd_model = SGD_RHMF(
-        likelihood=GaussianLikelihood(),
+        likelihood=StudentTLikelihood(nu=3.0, scale=0.5),
         opt=opt,
     )
     sgd_state = sgd_model.init_state(N, D, K, key)
