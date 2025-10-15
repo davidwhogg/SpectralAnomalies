@@ -3,6 +3,7 @@ from copy import deepcopy
 import jax
 import matplotlib.pyplot as plt
 import numpy as np
+import optax
 from collect import (
     TARGET_ID,
     compute_abs_mag,
@@ -116,16 +117,16 @@ W[~spec_nans_mask] = np.nan
 Y = np.nan_to_num(Y)
 W = np.nan_to_num(W)
 
-OPT_TYPE = "als"  # "sgd" or "als"
+OPT_TYPE = "sgd"  # "sgd" or "als"
 
 if OPT_TYPE == "sgd":
-    # als_hmf = SGD_HMF(learning_rate=1e-3, rotation="fast", whiten=True)
-    als_hmf = SGD_BlockHMF(learning_rate_A=1e-3, learning_rate_G=1e-3)
+    als_hmf = SGD_HMF(learning_rate=1e-2, rotation="fast", whiten=False, target="A")
+    # als_hmf = SGD_BlockHMF(learning_rate_A=1e-3, learning_rate_G=1e-3)
     opt = als_hmf.opt
-    ROT_CADENCE = 1
+    ROT_CADENCE = 10
     conv_strategy = "max_frac_A"
 elif OPT_TYPE == "als":
-    als_hmf = ALS_HMF(als_ridge=None, rotation="fast", whiten=True, target="G")
+    als_hmf = ALS_HMF(als_ridge=None, rotation="fast", whiten=False, target="A")
     opt = None
     ROT_CADENCE = 1
     conv_strategy = "max_frac_G"
@@ -139,7 +140,7 @@ init = Initialiser(N=Y.shape[0], M=Y.shape[1], K=RANK, strategy="svd")
 
 init_state, _ = init.execute(seed=0, Y=Y, opt=opt)
 
-N_ITER = 100
+N_ITER = 1000
 CONV_CADENCE = 20
 
 loss_history = []
@@ -170,6 +171,7 @@ for i in range(N_ITER):
             Y=Y,
             W_data=W,
             state=state,
+            rotate=rot,
         )
     loss_history.append(loss)
 
