@@ -19,6 +19,12 @@ from robusta_hmf.initialisation import Initialiser
 plt.style.use("mpl_drip.custom")
 rng = np.random.default_rng(0)
 
+# NOTE: LESSONS SO FAR
+# - Absolutely do not use whitening on either A or G. It just makes things worse.
+# - Definitely rotate A, not G.
+# - No need to use the Block-SGD thingy, jointly optimising A and G seems fine.
+# - Adafactor seems to work better than Adam or AdamW.
+
 
 # TARGET_ID = 1303220968849834112
 
@@ -36,8 +42,8 @@ print(
 # Find things that are similar to the target in colour-magnitude space, in an ellipse
 target_bp_rp = bp_rp[target_idx]
 target_abs_mag_G = abs_mag_G[target_idx]
-THRESH_BP_RP = 0.1
-THRESH_ABS_MAG = 0.1
+THRESH_BP_RP = 0.5
+THRESH_ABS_MAG = 0.5
 bp_rp_diff = np.abs(bp_rp - target_bp_rp)
 abs_mag_diff = np.abs(abs_mag_G - target_abs_mag_G)
 ellipse_mask = (bp_rp_diff / THRESH_BP_RP) ** 2 + (
@@ -211,7 +217,7 @@ plt.show()
 plt.figure(figsize=[8, 3], dpi=100, layout="compressed")
 for k in range(RANK):
     plt.plot(plot_state.A[:, k], lw=2, label=f"Basis {k}")
-plt.ylabel("Basis flux")
+# plt.ylabel("Basis flux")
 # plt.xlim(849.5, 850.5)
 plt.legend()
 plt.show()
