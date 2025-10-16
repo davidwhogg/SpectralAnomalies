@@ -1,4 +1,3 @@
-import jax
 import matplotlib.pyplot as plt
 import numpy as np
 from collect import (
@@ -43,8 +42,8 @@ print(
 # Find things that are similar to the target in colour-magnitude space, in an ellipse
 target_bp_rp = bp_rp[target_idx]
 target_abs_mag_G = abs_mag_G[target_idx]
-THRESH_BP_RP = 0.5
-THRESH_ABS_MAG = 0.5
+THRESH_BP_RP = 1.0
+THRESH_ABS_MAG = 1.5
 bp_rp_diff = np.abs(bp_rp - target_bp_rp)
 abs_mag_diff = np.abs(abs_mag_G - target_abs_mag_G)
 ellipse_mask = (bp_rp_diff / THRESH_BP_RP) ** 2 + (
@@ -155,7 +154,7 @@ W = W[:, l_ind:u_ind]
 spec_λ = spec_λ[l_ind:u_ind]
 
 
-OPT_TYPE = "sgd"  # "sgd" or "als"
+OPT_TYPE = "als"  # "sgd" or "als"
 
 # The below will be hidden from users in the future, with optional overrides of course
 if OPT_TYPE == "sgd":
