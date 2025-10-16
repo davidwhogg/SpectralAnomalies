@@ -23,7 +23,7 @@ rng = np.random.default_rng(0)
 # - Absolutely do not use whitening on either A or G. It just makes things worse.
 # - Definitely rotate A, not G.
 # - No need to use the Block-SGD thingy, jointly optimising A and G seems fine.
-# - Adafactor seems to work better than Adam or AdamW.
+# - Adafactor seems to work better than Adam.
 
 
 # TARGET_ID = 1303220968849834112
@@ -42,8 +42,8 @@ print(
 # Find things that are similar to the target in colour-magnitude space, in an ellipse
 target_bp_rp = bp_rp[target_idx]
 target_abs_mag_G = abs_mag_G[target_idx]
-THRESH_BP_RP = 0.5
-THRESH_ABS_MAG = 0.5
+THRESH_BP_RP = 0.1
+THRESH_ABS_MAG = 0.1
 bp_rp_diff = np.abs(bp_rp - target_bp_rp)
 abs_mag_diff = np.abs(abs_mag_G - target_abs_mag_G)
 ellipse_mask = (bp_rp_diff / THRESH_BP_RP) ** 2 + (
@@ -123,13 +123,13 @@ W[~spec_nans_mask] = np.nan
 Y = np.nan_to_num(Y)
 W = np.nan_to_num(W)
 
-OPT_TYPE = "sgd"  # "sgd" or "als"
+OPT_TYPE = "als"  # "sgd" or "als"
 
 if OPT_TYPE == "sgd":
     als_hmf = SGD_HMF(learning_rate=1e-3, rotation="fast", whiten=False, target="A")
     opt = als_hmf.opt
     ROT_CADENCE = 10
-    conv_strategy = "max_frac_A"
+    conv_strategy = "max_frac_G"
 elif OPT_TYPE == "als":
     als_hmf = ALS_HMF(als_ridge=None, rotation="fast", whiten=False, target="A")
     opt = None
@@ -140,7 +140,7 @@ else:
 
 RANK = 5
 
-conv_tester = ConvergenceTester(strategy=conv_strategy, tol=1e-5)
+conv_tester = ConvergenceTester(strategy=conv_strategy, tol=1e-2)
 init = Initialiser(N=Y.shape[0], M=Y.shape[1], K=RANK, strategy="svd")
 
 init_state = init.execute(seed=0, Y=Y, opt=opt)
@@ -152,13 +152,11 @@ loss_history = []
 
 # Run ALS iterations
 state = init_state
+prev_state = deepcopy(init_state)
 for i in range(N_ITER):
-    # Remember previous state for convergence testing
-    prev_state = deepcopy(state)
-
     # Check if we should rotate this iteration
     # Should be also if we are going to check convergence
-    if i % ROT_CADENCE == 0:
+    if i % ROT_CADENCE == 0 and i != 0:
         rot = True
     else:
         rot = False
@@ -180,6 +178,7 @@ for i in range(N_ITER):
                 break
             else:
                 pass
+        prev_state = deepcopy(state)
         print(f"iter {state.it:03d} | loss {loss:.4f}", flush=True)
 
 
