@@ -1,4 +1,4 @@
-from copy import deepcopy
+from copy import copy, deepcopy
 
 import jax
 import matplotlib.pyplot as plt
@@ -123,22 +123,24 @@ W[~spec_nans_mask] = np.nan
 Y = np.nan_to_num(Y)
 W = np.nan_to_num(W)
 
-OPT_TYPE = "als"  # "sgd" or "als"
+OPT_TYPE = "sgd"  # "sgd" or "als"
 
 if OPT_TYPE == "sgd":
     als_hmf = SGD_HMF(learning_rate=1e-3, rotation="fast", whiten=False, target="A")
     opt = als_hmf.opt
     ROT_CADENCE = 10
-    conv_strategy = "max_frac_G"
+    # conv_strategy = "max_frac_G"
+    conv_strategy = "rel_frac_loss"
 elif OPT_TYPE == "als":
     als_hmf = ALS_HMF(als_ridge=None, rotation="fast", whiten=False, target="A")
     opt = None
     ROT_CADENCE = 1
-    conv_strategy = "max_frac_G"
+    # conv_strategy = "max_frac_G"
+    conv_strategy = "rel_frac_loss"
 else:
     raise Exception("whoops")
 
-RANK = 5
+RANK = 3
 
 conv_tester = ConvergenceTester(strategy=conv_strategy, tol=1e-2)
 init = Initialiser(N=Y.shape[0], M=Y.shape[1], K=RANK, strategy="svd")
@@ -153,6 +155,7 @@ loss_history = []
 # Run ALS iterations
 state = init_state
 prev_state = deepcopy(init_state)
+prev_loss = np.inf
 for i in range(N_ITER):
     # Check if we should rotate this iteration
     # Should be also if we are going to check convergence
@@ -172,13 +175,14 @@ for i in range(N_ITER):
 
     # Check convergence and print loss every CONV_CADENCE iterations
     if i % CONV_CADENCE == 0 and i != 0:
-        if conv_tester.is_converged(prev_state, state):
+        if conv_tester.is_converged(prev_state, state, prev_loss, loss):
             print(f"Converged at iteration {i}")
             if OPT_TYPE == "als":
                 break
             else:
                 pass
         prev_state = deepcopy(state)
+        prev_loss = copy(loss)
         print(f"iter {state.it:03d} | loss {loss:.4f}", flush=True)
 
 
