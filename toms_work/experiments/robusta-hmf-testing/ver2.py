@@ -13,7 +13,7 @@ from collect import (
     read_spectra,
 )
 from robusta_hmf.convergence import ConvergenceTester
-from robusta_hmf.hmf import ALS_HMF, SGD_HMF, SGD_BlockHMF
+from robusta_hmf.hmf import ALS_HMF, SGD_HMF
 from robusta_hmf.initialisation import Initialiser
 
 plt.style.use("mpl_drip.custom")
@@ -127,7 +127,6 @@ OPT_TYPE = "sgd"  # "sgd" or "als"
 
 if OPT_TYPE == "sgd":
     als_hmf = SGD_HMF(learning_rate=1e-2, rotation="fast", whiten=False, target="A")
-    # als_hmf = SGD_BlockHMF(learning_rate_A=1e-3, learning_rate_G=1e-3)
     opt = als_hmf.opt
     ROT_CADENCE = 10
     conv_strategy = "max_frac_A"
@@ -142,11 +141,11 @@ else:
 RANK = 3
 
 conv_tester = ConvergenceTester(strategy=conv_strategy, tol=1e-5)
-init = Initialiser(N=Y.shape[0], M=Y.shape[1], K=RANK, strategy="svd")
+init = Initialiser(N=Y.shape[0], M=Y.shape[1], K=RANK, strategy="random")
 
 init_state, _ = init.execute(seed=0, Y=Y, opt=opt)
 
-N_ITER = 1000
+N_ITER = 2000
 CONV_CADENCE = 20
 
 loss_history = []
@@ -165,28 +164,27 @@ for i in range(N_ITER):
         rot = False
 
     # Optimisation step
-    if OPT_TYPE == "als":
-        state, loss = als_hmf.step(
-            Y=Y,
-            W_data=W,
-            state=state,
-            rotate=rot,
-        )
-    elif OPT_TYPE == "sgd":
-        state, loss = als_hmf.step(
-            Y=Y,
-            W_data=W,
-            state=state,
-            rotate=rot,
-        )
+    state, loss = als_hmf.step(
+        Y=Y,
+        W_data=W,
+        state=state,
+        rotate=rot,
+    )
+    # if OPT_TYPE == "als":
+    #     state, loss = als_hmf.step(
+    #         Y=Y,
+    #         W_data=W,
+    #         state=state,
+    #         rotate=rot,
+    #     )
+    # elif OPT_TYPE == "sgd":
+    #     state, loss = als_hmf.step(
+    #         Y=Y,
+    #         W_data=W,
+    #         state=state,
+    #         rotate=rot,
+    #     )
     loss_history.append(loss)
-
-    if i % 5 == 0:
-        valsA = np.linalg.eigvalsh((state.A.T @ state.A))
-        valsG = np.linalg.eigvalsh((state.G.T @ state.G))
-        print(
-            f"{state.it:04d}  cond(A)={valsA.max() / valsA.min():.1f}  cond(G)={valsG.max() / valsG.min():.1f}"
-        )
 
     # Check convergence and print loss every CONV_CADENCE iterations
     if i % CONV_CADENCE == 0 and i != 0:
@@ -199,8 +197,7 @@ for i in range(N_ITER):
         print(f"iter {state.it:03d} | loss {loss:.4f}", flush=True)
 
 
-# Rotate before reconstructing
-# plot_state = als_hmf.rotation(state)
+# State for plotting
 plot_state = state
 
 # Plot the inferred basis vectors
@@ -210,15 +207,13 @@ for k in range(RANK):
 plt.xlabel(r"$\lambda$ [nm]")
 plt.ylabel("Basis flux")
 # plt.ylim(-0.05, 0.05)
-# plt.xlim(849.5, 850.5)
 plt.legend()
 plt.show()
 
 plt.figure(figsize=[8, 3], dpi=100, layout="compressed")
 for k in range(RANK):
     plt.plot(plot_state.A[:, k], lw=2, label=f"Basis {k}")
-# plt.ylabel("Basis flux")
-# plt.xlim(849.5, 850.5)
+plt.ylabel("Coefficients")
 plt.legend()
 plt.show()
 
@@ -252,8 +247,6 @@ ax.plot(
 )
 ax.set_xlabel(r"$\lambda$ [nm]")
 ax.set_ylabel("Normalised Flux")
-# ax.set_xlim(849.5, 850.5)
-# ax.set_ylim(0.8, 1.00)
 ax.set_title(f"Gaia DR3 {TARGET_ID} and HMF reconstruction")
 ax.legend()
 plt.show()
@@ -282,16 +275,11 @@ for i, ax in zip(rand_idxs, axs):
     ax.set_ylabel("Normalised Flux")
     ax.legend()
 axs[-1].set_xlabel(r"$\lambda$ [nm]")
-# axs[0].set_xlim(849.5, 850.5)
-# axs[0].set_ylim(0.8, 1.00)
-fig.suptitle(f"HMF reconstruction of Gaia DR3 {TARGET_ID} and similar sources", y=0.95)
+fig.suptitle(f"HMF reconstruction of Gaia DR3 {TARGET_ID} and similar sources", y=1.1)
 plt.show()
 
 
-vals = np.linalg.eigvalsh(plot_state.A.T @ plot_state.A)
-print(vals / vals.max())  # normalised spectrum
-
-
+# Print some diagnostics that check for mode collapse
 AtA = plot_state.A.T @ plot_state.A
 GtG = plot_state.G.T @ plot_state.G
 print(np.linalg.eigvalsh(AtA / np.trace(AtA)))
