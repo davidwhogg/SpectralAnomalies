@@ -126,7 +126,7 @@ W = np.nan_to_num(W)
 OPT_TYPE = "sgd"  # "sgd" or "als"
 
 if OPT_TYPE == "sgd":
-    als_hmf = SGD_HMF(learning_rate=1e-2, rotation="fast", whiten=False, target="A")
+    als_hmf = SGD_HMF(learning_rate=1e-3, rotation="fast", whiten=False, target="A")
     opt = als_hmf.opt
     ROT_CADENCE = 10
     conv_strategy = "max_frac_A"
@@ -138,14 +138,14 @@ elif OPT_TYPE == "als":
 else:
     raise Exception("whoops")
 
-RANK = 3
+RANK = 5
 
 conv_tester = ConvergenceTester(strategy=conv_strategy, tol=1e-5)
-init = Initialiser(N=Y.shape[0], M=Y.shape[1], K=RANK, strategy="random")
+init = Initialiser(N=Y.shape[0], M=Y.shape[1], K=RANK, strategy="svd")
 
-init_state, _ = init.execute(seed=0, Y=Y, opt=opt)
+init_state = init.execute(seed=0, Y=Y, opt=opt)
 
-N_ITER = 2000
+N_ITER = 1000
 CONV_CADENCE = 20
 
 loss_history = []
@@ -170,20 +170,6 @@ for i in range(N_ITER):
         state=state,
         rotate=rot,
     )
-    # if OPT_TYPE == "als":
-    #     state, loss = als_hmf.step(
-    #         Y=Y,
-    #         W_data=W,
-    #         state=state,
-    #         rotate=rot,
-    #     )
-    # elif OPT_TYPE == "sgd":
-    #     state, loss = als_hmf.step(
-    #         Y=Y,
-    #         W_data=W,
-    #         state=state,
-    #         rotate=rot,
-    #     )
     loss_history.append(loss)
 
     # Check convergence and print loss every CONV_CADENCE iterations
