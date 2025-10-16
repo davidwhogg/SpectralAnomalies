@@ -11,7 +11,7 @@ from collect import (
     read_meta,
     read_spectra,
 )
-from robusta_hmf.rhmf_old import RHMF
+from robusta_hmf.rhmf_hogg import RHMF
 
 plt.style.use("mpl_drip.custom")
 rng = np.random.default_rng(0)
