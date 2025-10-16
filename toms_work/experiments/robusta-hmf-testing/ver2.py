@@ -1,9 +1,6 @@
-from copy import copy, deepcopy
-
 import jax
 import matplotlib.pyplot as plt
 import numpy as np
-import optax
 from collect import (
     TARGET_ID,
     compute_abs_mag,
@@ -13,6 +10,7 @@ from collect import (
     read_spectra,
 )
 from robusta_hmf.convergence import ConvergenceTester
+from robusta_hmf.frame import OptFrame
 from robusta_hmf.hmf import ALS_HMF, SGD_HMF
 from robusta_hmf.initialisation import Initialiser
 
@@ -21,9 +19,12 @@ rng = np.random.default_rng(0)
 
 # NOTE: LESSONS SO FAR
 # - Absolutely do not use whitening on either A or G. It just makes things worse.
+#   - REVISED: nevermind it's totally fine for BOTH ALS and SGD in both cases!
 # - Definitely rotate A, not G.
+#   - REVISED: ALSO fine to do either in both cases!
 # - No need to use the Block-SGD thingy, jointly optimising A and G seems fine.
 # - Adafactor seems to work better than Adam.
+# - Having the end pixels have many nans weights messes up the SGD optimisation. Clip them.
 
 
 # TARGET_ID = 1303220968849834112
@@ -117,77 +118,79 @@ plt.show()
 # Data to fit
 Y = similar_specs.copy()
 W = 1.0 / spec_u_flux[similar_spec_idxs] ** 2
+# Count the number of NaNs and zeros in W, and negatives
+# n_nans = np.sum(np.isnan(W))
+# n_zeros = np.sum(W == 0)
+# n_neg = np.sum(W < 0)
+# print(f"Number of NaNs in W: {n_nans}")
+# print(f"Number of zeros in W: {n_zeros}")
+# print(f"Number of negatives in W: {n_neg}")
+
+# Plot the number of nan weights per pixel
+plt.figure(figsize=[8, 4], dpi=100, layout="compressed")
+plt.plot(np.sum(np.isnan(W), axis=0))
+plt.xlabel("Pixel index")
+plt.ylabel("Number of nan weights")
+plt.title("Number of nan weights per pixel")
+plt.show()
+
+# Plot the number of zeros in the data (Y) per pixel
+plt.figure(figsize=[8, 4], dpi=100, layout="compressed")
+plt.plot(np.sum(Y == 0, axis=0))
+plt.xlabel("Pixel index")
+plt.ylabel("Number of zero fluxes")
+plt.title("Number of zero fluxes per pixel")
+plt.show()
+
 spec_nans_mask = nans_mask([Y, W])
 Y[~spec_nans_mask] = np.nan
 W[~spec_nans_mask] = np.nan
 Y = np.nan_to_num(Y)
 W = np.nan_to_num(W)
 
-OPT_TYPE = "sgd"  # "sgd" or "als"
+clip_edge_pix = 20
+l_ind, u_ind = clip_edge_pix, Y.shape[1] - clip_edge_pix
+Y = Y[:, l_ind:u_ind]
+W = W[:, l_ind:u_ind]
+spec_λ = spec_λ[l_ind:u_ind]
 
+
+OPT_TYPE = "als"  # "sgd" or "als"
+
+# The below will be hidden from users in the future, with optional overrides of course
 if OPT_TYPE == "sgd":
     als_hmf = SGD_HMF(learning_rate=1e-3, rotation="fast", whiten=False, target="A")
     opt = als_hmf.opt
     ROT_CADENCE = 10
-    # conv_strategy = "max_frac_G"
     conv_strategy = "rel_frac_loss"
 elif OPT_TYPE == "als":
     als_hmf = ALS_HMF(als_ridge=None, rotation="fast", whiten=False, target="A")
     opt = None
     ROT_CADENCE = 1
-    # conv_strategy = "max_frac_G"
     conv_strategy = "rel_frac_loss"
 else:
     raise Exception("whoops")
 
-RANK = 3
+RANK = 7
 
-conv_tester = ConvergenceTester(strategy=conv_strategy, tol=1e-2)
+conv_tester = ConvergenceTester(strategy=conv_strategy, tol=1e-3)
 init = Initialiser(N=Y.shape[0], M=Y.shape[1], K=RANK, strategy="svd")
+
+frame = OptFrame(method=als_hmf, conv_tester=conv_tester)
 
 init_state = init.execute(seed=0, Y=Y, opt=opt)
 
 N_ITER = 1000
 CONV_CADENCE = 20
 
-loss_history = []
-
-# Run ALS iterations
-state = init_state
-prev_state = deepcopy(init_state)
-prev_loss = np.inf
-for i in range(N_ITER):
-    # Check if we should rotate this iteration
-    # Should be also if we are going to check convergence
-    if i % ROT_CADENCE == 0 and i != 0:
-        rot = True
-    else:
-        rot = False
-
-    # Optimisation step
-    state, loss = als_hmf.step(
-        Y=Y,
-        W_data=W,
-        state=state,
-        rotate=rot,
-    )
-    loss_history.append(loss)
-
-    # Check convergence and print loss every CONV_CADENCE iterations
-    if i % CONV_CADENCE == 0 and i != 0:
-        if conv_tester.is_converged(prev_state, state, prev_loss, loss):
-            print(f"Converged at iteration {i}")
-            if OPT_TYPE == "als":
-                break
-            else:
-                pass
-        prev_state = deepcopy(state)
-        prev_loss = copy(loss)
-        print(f"iter {state.it:03d} | loss {loss:.4f}", flush=True)
-
-
-# State for plotting
-plot_state = state
+plot_state, loss_history = frame.run(
+    Y=Y,
+    W=W,
+    init_state=init_state,
+    rotation_cadence=ROT_CADENCE,
+    conv_check_cadence=CONV_CADENCE,
+    max_iter=N_ITER,
+)
 
 # Plot the inferred basis vectors
 plt.figure(figsize=[8, 8], dpi=100, layout="compressed")
@@ -219,7 +222,7 @@ Y_rec = plot_state.A @ plot_state.G.T
 fig, ax = plt.subplots(figsize=[9, 5], dpi=100, layout="compressed")
 ax.plot(
     spec_λ,
-    similar_specs[target_similar_idx],
+    similar_specs[target_similar_idx][l_ind:u_ind],
     lw=2,
     alpha=1,
     c="C0",
@@ -246,7 +249,7 @@ fig, axs = plt.subplots(3, 1, figsize=[9, 9], dpi=100, layout="compressed", shar
 for i, ax in zip(rand_idxs, axs):
     ax.plot(
         spec_λ,
-        similar_specs[i],
+        similar_specs[i][l_ind:u_ind],
         lw=2,
         alpha=1,
         c="C0",
