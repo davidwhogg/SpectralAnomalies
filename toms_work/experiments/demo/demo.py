@@ -12,12 +12,12 @@ plt.style.use("mpl_drip.custom")
 rng = np.random.default_rng(42)
 
 
-# ==== Read the data ====
+# ==== Read the GAIA RVS spectra data ====
 
 Y, W, spec_λ, bp_rp, abs_mag_G = get_data(
-    thresh_bp_rp=0.1,
+    thresh_bp_rp=0.1,  # NOTE: Increase these thresholds to get more data
     thresh_abs_mag=0.1,
-    clip_edge_pix=20,
+    clip_edge_pix=20,  # NOTE: Don't clip much less or we get edge effects due to shitty spectra shit I don't understand that kills the optimisation
 )
 print("\n================================\n")
 
@@ -28,10 +28,8 @@ RANK = 3
 ROBUST_SCALE = 2.0
 MAX_ITER = 1000
 
-# NOTE: I'm not using exactly the same convergence criteria is in the Hogg code, but I'll provide the option here to do that if you want
-#       It does not really work for the SGD version though it tends to exit very early, so be aware of that.
-#       The ALS solve actually does 6 steps for my conv criteria and 5 for Hogg's with the same eps so it's whatever anyway.
-conv_tol = 1e-4
+# NOTE: I'm not using exactly the same convergence criteria is in the Hogg code, but I'll provide the option here to do that if you want.
+conv_tol = 1e-3
 conv_strategy = "rel_frac_loss"  # My default convergence criteria
 # conv_strategy = "max_frac_G"  # Hogg version convergence criteria
 
@@ -44,7 +42,7 @@ model_als = Robusta(
     robust_scale=ROBUST_SCALE,
     conv_strategy=conv_strategy,
     conv_tol=conv_tol,
-    init_strategy="svd",  # This is what Hogg does
+    init_strategy="svd",
     target="G",
     whiten=True,
 )
@@ -54,7 +52,7 @@ model_sgd = Robusta(
     robust_scale=ROBUST_SCALE,
     conv_strategy=conv_strategy,
     conv_tol=conv_tol,
-    init_strategy="svd",  # This is what Hogg does
+    init_strategy="svd",
     target="G",
     whiten=True,
 )
@@ -84,6 +82,9 @@ plt.yscale("log")
 plt.title("Loss Histories")
 plt.legend()
 plt.show()
+
+# NOTE: As we see in the loss history plots, the SGD model plateaus at higher loss than the ALS. I think in practice this wouldn't really matter for
+# the following reason. Here, I'm initialising everything from the same SVD. In practice, one would fit with ALS to a tractable subset of the data, take the basis vectors, solve for the coefficients for all data, then initialise SGD from there.
 
 print("\n================================\n")
 
