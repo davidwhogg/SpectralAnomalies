@@ -8,10 +8,7 @@ from collect import (
     read_meta,
     read_spectra,
 )
-from robusta_hmf.convergence import ConvergenceTester
-from robusta_hmf.frame import OptFrame
-from robusta_hmf.hmf import HMF
-from robusta_hmf.initialisation import Initialiser
+from robusta_hmf import HMF, ConvergenceTester, Initialiser, OptFrame
 
 plt.style.use("mpl_drip.custom")
 rng = np.random.default_rng(0)
@@ -137,7 +134,7 @@ W = W[:, l_ind:u_ind]
 spec_λ = spec_λ[l_ind:u_ind]
 
 
-OPT_TYPE = "sgd"  # "sgd" or "als"
+OPT_TYPE = "als"  # "sgd" or "als"
 
 # The below will be hidden from users in the future, with optional overrides of course
 if OPT_TYPE == "sgd":
