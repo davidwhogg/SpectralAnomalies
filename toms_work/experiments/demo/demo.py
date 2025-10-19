@@ -15,8 +15,8 @@ rng = np.random.default_rng(42)
 # ==== Read the GAIA RVS spectra data ====
 
 Y, W, spec_λ, bp_rp, abs_mag_G = get_data(
-    thresh_bp_rp=0.1,  # NOTE: Increase these thresholds to get more data
-    thresh_abs_mag=0.1,
+    thresh_bp_rp=0.3,  # NOTE: Increase these thresholds to get more data
+    thresh_abs_mag=0.3,
     clip_edge_pix=20,  # NOTE: Don't clip much less or we get edge effects due to shitty spectra shit I don't understand that kills the optimisation
 )
 print("\n================================\n")
@@ -28,10 +28,8 @@ RANK = 3
 ROBUST_SCALE = 2.0
 MAX_ITER = 1000
 
-# NOTE: I'm not using exactly the same convergence criteria is in the Hogg code, but I'll provide the option here to do that if you want.
+# NOTE: For ALS, I'll match Hogg's convergence criterion. For SGD, that tends to cause early exits so I do something based on change in loss instead.
 conv_tol = 1e-3
-conv_strategy = "rel_frac_loss"  # My default convergence criteria
-# conv_strategy = "max_frac_G"  # Hogg version convergence criteria
 
 # ==== Fitting ====
 
@@ -40,9 +38,10 @@ model_als = Robusta(
     rank=RANK,
     method="als",
     robust_scale=ROBUST_SCALE,
-    conv_strategy=conv_strategy,
+    conv_strategy="max_frac_G",
     conv_tol=conv_tol,
     init_strategy="svd",
+    rotation="fast",
     target="G",
     whiten=True,
 )
@@ -50,9 +49,10 @@ model_sgd = Robusta(
     rank=RANK,
     method="sgd",  # NOTE: Although I called this SGD, I'm not using mini-batches, so it's just full-batch first order optimisation
     robust_scale=ROBUST_SCALE,
-    conv_strategy=conv_strategy,
+    conv_strategy="rel_frac_loss",
     conv_tol=conv_tol,
     init_strategy="svd",
+    rotation="fast",
     target="G",
     whiten=True,
 )
@@ -70,6 +70,9 @@ state_als, loss_history_als = model_als.fit(
 print("\nTraining Robusta SGD...")
 state_sgd, loss_history_sgd = model_sgd.fit(Y=Y, W=W, max_iter=MAX_ITER)
 print("\nTraining Hogg RHMF...")
+init_state = model_als._initialiser.execute(Y=Y)
+model_hogg.A = jnp.array(init_state.A.T)
+model_hogg.G = jnp.array(init_state.G.T)
 model_hogg.train(maxiter=MAX_ITER, tol=conv_tol)
 
 # Plot the loss histories for both Robusta models
@@ -95,27 +98,32 @@ basis_als = model_als.basis_vectors()
 basis_sgd = model_sgd.basis_vectors()
 basis_hogg = jnp.array(model_hogg.G.T)
 
+
+def get_sign_abs_max(x):
+    return jnp.sign(x[jnp.argmax(jnp.abs(x))])
+
+
 fig, axes = plt.subplots(
     RANK, 1, dpi=100, figsize=[8, 3 * RANK], layout="compressed", sharex=True
 )
 for k in range(RANK):
     axes[k].plot(
         spec_λ,
-        basis_als[:, k],
+        basis_als[:, k] / get_sign_abs_max(basis_als[:, k]),
         lw=2,
         alpha=0.7,
         label="Robusta ALS",
     )
     axes[k].plot(
         spec_λ,
-        basis_sgd[:, k],
+        basis_sgd[:, k] / get_sign_abs_max(basis_sgd[:, k]),
         lw=2,
         alpha=0.7,
         label="Robusta SGD",
     )
     axes[k].plot(
         spec_λ,
-        basis_hogg[:, k],
+        basis_hogg[:, k] / get_sign_abs_max(basis_hogg[:, k]),
         lw=2,
         alpha=0.7,
         label="Hogg RHMF",
