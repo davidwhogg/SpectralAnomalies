@@ -14,7 +14,7 @@ rng = np.random.default_rng(42)
 
 # ==== Read the GAIA RVS spectra data ====
 
-Y, W, spec_λ, bp_rp, abs_mag_G = get_data(
+Y, W, spec_λ, bp_rp, abs_mag_G, target_idx = get_data(
     thresh_bp_rp=0.3,  # NOTE: Increase these thresholds to get more data
     thresh_abs_mag=0.3,
     clip_edge_pix=20,  # NOTE: Don't clip much less or we get edge effects due to shitty spectra shit I don't understand that kills the optimisation
@@ -24,12 +24,12 @@ print("\n================================\n")
 # ==== Model config ====
 
 # Model setup options shared for (a.i) Hogg code and (b.i) Robusta ALS (b.ii) Robusta SGD
-RANK = 3
+RANK = 9
 ROBUST_SCALE = 2.0
 MAX_ITER = 1000
 
 # NOTE: For ALS, I'll match Hogg's convergence criterion. For SGD, that tends to cause early exits so I do something based on change in loss instead.
-conv_tol = 1e-3
+conv_tol = 1e-2
 
 # ==== Fitting ====
 
@@ -290,3 +290,189 @@ axes[2].set_title("Hogg RHMF Robust Weights")
 plt.colorbar(im2, ax=axes[2], label="Robust Weight")
 axes[2].set_xlabel("Pixel Index")
 plt.show()
+
+
+# Histogram of the weights
+plt.figure(figsize=[9, 2.5], dpi=100)
+plt.hist(W_als.mean(axis=-1))
+plt.yscale("log")
+plt.ylabel("Count")
+plt.xlabel("Spectrum Robust Weight")
+plt.show()
+
+
+# Reconstruction and residual for the target spectrum
+Y_target = Y[target_idx]
+Y_rec_target_als = Y_rec_als[target_idx]
+Y_rec_target_sgd = Y_rec_sgd[target_idx]
+Y_rec_target_hogg = Y_rec_hogg[target_idx]
+residual_als = Y_target - Y_rec_target_als
+residual_sgd = Y_target - Y_rec_target_sgd
+residual_hogg = Y_target - Y_rec_target_hogg
+fig, axs = plt.subplots(
+    3, 1, figsize=[9, 12], dpi=100, layout="compressed", sharex=True
+)
+axs[0].plot(
+    spec_λ,
+    Y_target,
+    lw=2,
+    alpha=1,
+    c="k",
+    label="Data",
+)
+axs[0].plot(
+    spec_λ,
+    Y_rec_target_als,
+    lw=2,
+    alpha=1,
+    ls="--",
+    c="C1",
+    label="Robusta ALS Recon",
+)
+axs[0].set_ylabel("Normalised Flux")
+axs[0].set_title(f"Target Spectrum Index {target_idx} and Robusta ALS Reconstruction")
+axs[0].legend()
+axs[1].plot(
+    spec_λ,
+    residual_als,
+    lw=2,
+    alpha=1,
+    c="C3",
+)
+axs[1].set_ylabel("Residual Flux")
+axs[1].set_title("Robusta ALS Reconstruction Residual")
+axs[2].plot(
+    spec_λ,
+    residual_sgd,
+    lw=2,
+    alpha=1,
+    c="C4",
+    label="Robusta SGD Residual",
+)
+axs[2].plot(
+    spec_λ,
+    residual_hogg,
+    lw=2,
+    alpha=1,
+    c="C5",
+    label="Hogg RHMF Residual",
+)
+axs[2].set_ylabel("Residual Flux")
+axs[2].set_title("Robusta SGD and Hogg RHMF Reconstruction Residuals")
+axs[2].set_xlabel(r"$\lambda$ [nm]")
+axs[2].legend()
+plt.show()
+
+# Robust weights for the target spectrum
+weight_target_als = W_als[target_idx]
+weight_target_sgd = W_sgd[target_idx]
+weight_target_hogg = W_hogg[target_idx]
+plt.figure(figsize=[8, 5], dpi=100, layout="compressed")
+plt.plot(
+    spec_λ,
+    weight_target_als,
+    lw=1,
+    alpha=1,
+    # label="Robusta ALS Robust Weights",
+)
+# plt.plot(
+#     spec_λ,
+#     weight_target_sgd,
+#     lw=2,
+#     alpha=1,
+#     label="Robusta SGD Robust Weights",
+# )
+# plt.plot(
+#     spec_λ,
+#     weight_target_hogg,
+#     lw=2,
+#     alpha=1,
+#     label="Hogg RHMF Robust Weights",
+# )
+plt.xlabel(r"$\lambda$ [nm]")
+plt.ylabel("Robust Weight")
+plt.title("Robust Weights for Target Spectrum")
+plt.legend()
+plt.show()
+
+# Target weights heatmap 2 (number of methods, let's exclude the SGD) by (number of pixels)
+# x axis labelled by wavelength not pixel index
+target_weights = jnp.vstack([weight_target_als, weight_target_hogg])
+plt.figure(figsize=[10, 2], dpi=100, layout="compressed")
+plt.imshow(
+    np.atleast_2d(target_weights[0, :]),
+    aspect="auto",
+    cmap="viridis",
+    vmin=0,
+    vmax=1,
+    extent=[spec_λ.min(), spec_λ.max(), 0, 2],
+)
+plt.colorbar(label="Robust Weight", aspect=4)
+plt.yticks([])
+# plt.yticks([0.5, 1.5], ["Robusta ALS", "Hogg RHMF"])
+# plt.yticks([0.5, 1.5], ["Robusta ALS", "Hogg RHMF"])
+plt.xlabel(r"$\lambda$ [nm]")
+plt.title("Robust Weights for Target Spectrum Comparison")
+plt.show()
+
+# Same as plot above but compared to the median robust weights across all spectra
+mean_weights = jnp.vstack([np.nanmedian(W_als, axis=0), np.nanmedian(W_hogg, axis=0)])
+plt.figure(figsize=[10, 4], dpi=100, layout="compressed")
+plt.imshow(
+    mean_weights,
+    aspect="auto",
+    cmap="viridis",
+    vmin=mean_weights.min(),
+    vmax=mean_weights.max(),
+    extent=[spec_λ.min(), spec_λ.max(), 0, 2],
+)
+plt.colorbar(label="Robust Weight")
+plt.yticks([0.5, 1.5], ["Robusta ALS Mean", "Hogg RHMF Mean"])
+plt.xlabel(r"$\lambda$ [nm]")
+plt.title("Mean Robust Weights Across All Spectra Comparison")
+plt.show()
+
+# Target weights for a random spectrum that, plotted as a heatmap again
+rand_target_idx = rng.choice(Y.shape[0], size=1)[0]
+weight_target_als = W_als[rand_target_idx]
+weight_target_hogg = W_hogg[rand_target_idx]
+plt.figure(figsize=[10, 4], dpi=100, layout="compressed")
+plt.imshow(
+    jnp.vstack([weight_target_als, weight_target_hogg]),
+    aspect="auto",
+    cmap="viridis",
+    vmin=0,
+    vmax=1,
+    extent=[spec_λ.min(), spec_λ.max(), 0, 2],
+)
+plt.colorbar(label="Robust Weight")
+plt.yticks([0.5, 1.5], ["Robusta ALS", "Hogg RHMF"])
+plt.xlabel(r"$\lambda$ [nm]")
+plt.title(f"Robust Weights for Random Spectrum Index {rand_target_idx} Comparison")
+plt.show()
+
+
+# Plot all the outlier spectra, i.e. those with target robust weight < 0.5
+# Stick to ALS model from here for simplicity
+object_weights = W_als.mean(axis=-1)
+outlier_mask = object_weights < 0.5
+outlier_specs = Y[outlier_mask, :]
+outlier_ids = np.where(outlier_mask)[0]
+print(outlier_specs.shape)
+
+fig, ax = plt.subplots(figsize=[7, 7], dpi=100, layout="compressed")
+for i in range(outlier_specs.shape[0]):
+    ax.plot(spec_λ, outlier_specs[i] + i, lw=1, alpha=1, c=f"C{i}", label="Outlier")
+
+# yticks for index labels
+yticks = np.arange(outlier_specs.shape[0]) + 1
+ax.set_yticks(yticks)
+ax.set_yticklabels(outlier_ids)
+
+ax.set_xlabel(r"$\lambda$ [nm]")
+ax.set_ylabel("Normalised Flux")
+ax.set_title(r"Outlier Spectra (Object Weight $<$ 0.5)")
+plt.show()
+
+
+print(target_idx)

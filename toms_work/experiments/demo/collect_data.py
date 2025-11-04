@@ -107,6 +107,11 @@ def get_data(thresh_bp_rp=0.05, thresh_abs_mag=0.05, clip_edge_pix=20, mask="ell
         [find_source_index(spec_source_id, sid) for sid in source_id[similar_mask]]
     )
     similar_specs = spec_flux[similar_spec_idxs]
+    similar_ids = spec_source_id[similar_spec_idxs]
+    target_similar_idx = find_source_index(similar_ids, TARGET_ID)
+    print(
+        f"Sanity check source IDs: {source_id[target_idx]} {similar_ids[target_similar_idx]}"
+    )
 
     # Data to fit
     Y = similar_specs.copy()
@@ -127,11 +132,11 @@ def get_data(thresh_bp_rp=0.05, thresh_abs_mag=0.05, clip_edge_pix=20, mask="ell
     sim_bp_rp = bp_rp[similar_mask]
     sim_abs_mag_G = abs_mag_G[similar_mask]
 
-    return Y, W, spec_λ, sim_bp_rp, sim_abs_mag_G
+    return Y, W, spec_λ, sim_bp_rp, sim_abs_mag_G, target_similar_idx
 
 
-THRESH_BP_RP = 0.2
-THRESH_ABS_MAG = 0.2
+THRESH_BP_RP = 0.3
+THRESH_ABS_MAG = 0.3
 
 # NOTE: Yes this is repeated code, but it's just to make some plots if you want to run this file directly
 if __name__ == "__main__":
