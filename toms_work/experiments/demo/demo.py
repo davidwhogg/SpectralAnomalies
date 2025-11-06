@@ -24,7 +24,7 @@ print("\n================================\n")
 # ==== Model config ====
 
 # Model setup options shared for (a.i) Hogg code and (b.i) Robusta ALS (b.ii) Robusta SGD
-RANK = 9
+RANK = 7
 ROBUST_SCALE = 2.0
 MAX_ITER = 1000
 
@@ -460,14 +460,16 @@ outlier_specs = Y[outlier_mask, :]
 outlier_ids = np.where(outlier_mask)[0]
 print(outlier_specs.shape)
 
-fig, ax = plt.subplots(figsize=[7, 7], dpi=100, layout="compressed")
+fig, ax = plt.subplots(figsize=[16, 7], dpi=100, layout="compressed")
 for i in range(outlier_specs.shape[0]):
-    ax.plot(spec_λ, outlier_specs[i] + i, lw=1, alpha=1, c=f"C{i}", label="Outlier")
+    ax.plot(spec_λ, outlier_specs[i] + i, lw=2, alpha=1, c=f"C{i}", label="Outlier")
 
 # yticks for index labels
 yticks = np.arange(outlier_specs.shape[0]) + 1
 ax.set_yticks(yticks)
 ax.set_yticklabels(outlier_ids)
+
+plt.ylim(0.5, 3.2)
 
 ax.set_xlabel(r"$\lambda$ [nm]")
 ax.set_ylabel("Normalised Flux")
@@ -476,3 +478,22 @@ plt.show()
 
 
 print(target_idx)
+
+# Same plot as directly above but with the model reconstructions subtracted out to show the residuals
+fig, ax = plt.subplots(figsize=[16, 7], dpi=100, layout="compressed")
+for i in range(outlier_specs.shape[0]):
+    recon = Y_rec_als[outlier_ids[i], :]
+    residual = outlier_specs[i] - recon
+    ax.plot(spec_λ, residual + i, lw=2, alpha=1, c=f"C{i}", label="Outlier Residual")
+
+# yticks for index labels
+yticks = np.arange(outlier_specs.shape[0])
+ax.set_yticks(yticks)
+ax.set_yticklabels(outlier_ids)
+
+plt.ylim(-0.5, 2.2)
+
+ax.set_xlabel(r"$\lambda$ [nm]")
+ax.set_ylabel("Residual Flux")
+ax.set_title(r"Outlier Spectra Residuals")
+plt.show()
