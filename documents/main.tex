@@ -1,34 +1,48 @@
-\documentclass{article}
-\usepackage[letterpaper]{geometry}
+\documentclass[onecolumn,floatfix]{aastex631}
+% \usepackage[letterpaper]{geometry}
 \usepackage{setspace}
 \usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{graphicx}
 
 % page layout -- the idea is, set text height and width and then set margins to match
-\setlength{\textheight}{9.00in}
-\setlength{\textwidth}{5.00in}
-\setlength{\topmargin}{0.5\paperheight}\addtolength{\topmargin}{-1in}\addtolength{\topmargin}{-0.5\textheight}\addtolength{\topmargin}{-\headsep}\addtolength{\topmargin}{-\headheight}
-\setlength{\oddsidemargin}{0.5\paperwidth}\addtolength{\oddsidemargin}{-1in}\addtolength{\oddsidemargin}{-0.5\textwidth}
-\pagestyle{myheadings}
-\markboth{foo}{\sffamily Hogg / robust heteroskedastic matrix factorization}
+% \setlength{\textheight}{9.00in}
+% \setlength{\textwidth}{5.00in}
+% \setlength{\topmargin}{0.5\paperheight}\addtolength{\topmargin}{-1in}\addtolength{\topmargin}{-0.5\textheight}\addtolength{\topmargin}{-\headsep}\addtolength{\topmargin}{-\headheight}
+% \setlength{\oddsidemargin}{0.5\paperwidth}\addtolength{\oddsidemargin}{-1in}\addtolength{\oddsidemargin}{-0.5\textwidth}
+% \pagestyle{myheadings}
+% \markboth{foo}{\sffamily Hilder \& Hogg / robust heteroskedastic matrix factorization}
 
 % other text layout adjustment commands
-\renewcommand{\newblock}{} % this adjusts the bibliography style.
-\setstretch{1.08}
-\sloppy\sloppypar\raggedbottom
-\frenchspacing
+% \renewcommand{\newblock}{} % this adjusts the bibliography style.
+% \setstretch{1.08}
+% \sloppy\sloppypar\raggedbottom
+% \frenchspacing
 
 % math macros
 \DeclareMathOperator{\rank}{rank}
 \DeclareMathOperator{\solve}{solve}
 \DeclareMathOperator{\svd}{svd}
+\DeclareMathOperator{\eig}{eig}
+
+
+\DeclareMathOperator*{\argmin}{argmin}
+\DeclareMathOperator*{\argmax}{argmax}
 
 \begin{document}
 
-\title{RHMF for astronomy}
-\author{David W. Hogg, Thomas Hilder}
-\maketitle
+\title{A robust replacement for principal components analysis, designed to account for missing data and outliers.}
+\author[0000-0001-7641-5235]{Thomas Hilder}
+\affiliation{School of Physics and Astronomy, Monash University VIC 3800, Australia}
+\author[0000-0003-2866-9403]{David W. Hogg}
+\affiliation{TODO}
 
 \section{Introduction}
+
+Matrix factorization methods are a workhorse of astronomy.
+This is especially true in stellar spectroscopy where it is hard to build detailed theoretical models, but we have a lot of data.
+Models of this class model a rectangular $N \times M$ data matrix ${\bf Y}$ with a matrix ${\bf L}$ of lower rank $K \le {\rm min} \, (N, M)$ that minimizes the residual $\left|{\bf Y} - {\bf L}\right|$.
+The oldest and most widely used of these is principal component analysis, 
 
 \paragraph{Prior work:}
 \begin{itemize}
@@ -61,171 +75,552 @@ It also [HOGG THINKS] can't be expressed precisely as the optimization of a sing
 [TOM: I think we can express things either as a heavy-tailed MLE, or as a latent-variance hierarchical model with a Gaussian likelihood. See below and Appendix. The latter is undercooked, I only started thinking about it this morning, but I think it's ultimately the nicest. Either way, we have nice statistics.]
 However, empirically, it works very well in standard astronomical contexts, as we will see.
 
-\section{Assumptions and choices}
+Other prior art that Tom has found:
+\begin{enumerate}
+    \item Wright+2009: Write problem with Langrange multiplier framework swap from L0 to L1 loss on sparse/outlier matrix to get a tractable optimization problem. If they used a different loss I think they would have what we do?
+    \item Wipf+2009: Actually kind of similar to ours but super expensive and I got a bit lost in the sauce quite fast. Start of section 2 has text about a very similar probabilistic view to ours.
+    \item Candes+2011: Robust PCA suggestion but not IRLS-based. Called PCP.
+    \item Polyak+2017: IRLS-based PCA using Huber loss
+    \item Centofanti+2025: cellPCA. IRLS-based PCA that simultaneously learns per-object and per-"cell" (per $y_{ij}$) weights by combining two robust losses. The have a nested rescaling when evaluating the loss where each time is hyperbolic tangent as a loss. They handle the missing data case but not heteroskedasticity. I think our loss is much nicer because our latent weights have statistical meaning. Actually they also make a big deal out of their provable convergence. I think we do everything they do but better, apart from potentially their segregation between object and cell weights? We sort of have that though.
+    \item Rodriguez+2013: fast-PCP. Basically Candes but fast via Lanczos.
+    \item Cai+2021: LRPCA. Idk this one is confusing but they are doing some gradient-descent-ish thing.
+    \item Guyon+2012: Candes with an L1 regularisation spatially (they are doing foreground/background identification for moving objects in security cameras and stuff). They do use an IRLS scheme to solve it.
+\end{enumerate}
+
+No one else has all of the following together as far as I can tell:
+\begin{enumerate}
+    \item Heteroskedastic measurement uncertainties
+    \item Missing data
+    \item Student-t/Cauchy loss
+    \item Closed form ALS/IRLS update rules with guarantees
+    \item A Bayesian hierarchical interpretation
+\end{enumerate}
+
+% \section{Assumptions and choices}
 
 \section{Method}
-The setup is that there are $N$ spectra $y_i$ ($1\leq i\leq N$),
-each of which has $M$ pixels $y_{ij}$ ($1\leq j\leq M$).
-Importantly for what follows, some of the pixels can have dummy or null values, because not all pixels of all spectra will have been observed in most real contexts.
-Along with each pixel value $y_{ij}$ there is an associated inverse-variance weight $w_{ij}$.
-Usually these weights will be inverse uncertainty variances $\sigma_{ij}^{-2}$.
-Importantly, the pixels with dummy or null values of $y_{ij}$ should have vanishing weights $w_{ij}$.
-Vanishing weights ($w_{ij}\rightarrow 0$) are equivalent to infinitely large ``error bars'' ($\sigma_{ij}\rightarrow\infty$).
 
-The weights need to have two properties for the method to be safe:
-\textsl{(1)}~All the weights need to be strictly non-negative, and
-\textsl{(2)}~each weight $w_{ij}$ needs to have units that are inverse of the square of the units of the pixel value $y_{ij}$.
-So if the $y_{ij}$ have units of flux, then the units of the weights $w_{ij}$ need to be inverse flux squared.
+% Structure planning
+% \begin{itemize}
+%     \item Structure of forward model: matrix factorization/low rank linear model.
+%     \item Assumptions we'll make: orthogonal basis vectors, heteroskedasticity, potentially missing data, provided measurement uncertainties that are not necessarily trustworthy, data on same grids (optional, shift operators exist).
+%     \item Statistics of the model. Heavy-tailed likelihood, which has an equivalent view of a normal likelihood with inverse Gamma distribution priors over the variance (centred on the provided measurement uncertainties).
+%     \item Solve methods. IRLS/ALS connection with proof in Appendix, in this case optimising the latent robust weights performs an implicit marginalization. Alternatively, directly optimize the likelihood and 
+% \end{itemize}
 
-The data $y_{ij}$ are rectangular in the following sense:
-Each index value $i$ corresponds to one, well-defined spectrum of one star, and
-each index value $j$ corresponds to one, well-defined wavelength $\lambda_j$ (which could be spectrograph-frame wavelength or stellar rest-frame wavelength, depending on task).
-Every $i,j$ pair has an entry, although many of them will have $w_{ij}=0$ because they are unobserved values.
-Because the method will be perfectly insensitive to pixels with $w_{ij}=0$, it doesn't matter what the fill value is for $y_{ij}$, but it makes sense to use something sensible (like zero) for numerical safety.
+\subsection{Model setup and assumptions}
 
-The method will be unstable unless, for each star $i$, there are many observed wavelengths $j$ ($w_{ij} > 0$ for many pixels $j$, for every $i$).
-Similarly, we will need it to be the case that, for each wavelength $j$, there are many observed stars $i$ ($w_{ij} > 0$ for many stars $i$, at every $j$).
-Without breaking rectangularity, any stars $i$ or wavelengths $j$ that do not meet these criteria can be dropped from the method prior to start.
+Let $N \in \mathbb{Z}^+$ be the number of spectra, and $M\in\mathbb{Z}^+$ be the number of pixels in each spectrum.
+$y_{ij}$ is then the value of pixel $j$ for spectrum $i$.
+We assume also that the investigator has Gaussian measurement uncertainties $\sigma_{ij}$ corresponding to each pixel value, an assumption we will return to shortly, and also that these uncertainties have the same units as $y_{ij}$.
+In practice we will often refer to ``weights'' instead, which are simply inverse variances $w_{ij} = \sigma_{ij}^{-2}$.
 
-The model, conceptually, is that the rectangular data matrix composed of the $y_{ij}$ can be represented, up to noise, as a low-rank matrix plus sparse outliers.
-To be slightly more specific,
+Conceptually, the forward model for the data is
 \begin{align}
-    y_{ij} &= \sum_{k=1}^K a_{ik}\,g_{kj} + \text{outliers} + \text{noise} \label{eq:model}~,
+    y_{ij} &= \sum_{k=1}^K a_{ik} g_{kj} + \rm{outliers} + \rm{noise},
+    % {\bf Y} &= {\bf A} {\bf G} + \rm{outliers} + \rm{noise}
 \end{align}
-where the rank is $K$,
-each $a_i$ is a $K$-vector of coefficients $a_{ik}$,
-each $g_k$ is an $M$-vector eigenvector of the low-rank model,
-and the outliers and noise can't really be distinguished from one another.
-That is, the model is low-rank plus outliers plus noise but really it can be seen as just low-rank plus residuals.
+which is a low dimensional linear embedding of rank $K\in\mathbb{Z}^+$.
+$a_{ik}$ are the entries of an $N \times K$ matrix ${\bf A}$ where each of the $N$ rows contains $K$ \emph{coefficients}, and $g_{kj}$ are the entries of a $K \times M$ matrix ${\bf G}$ where each of the $K$ rows contain \emph{basis vectors} of length $M$.
+The outliers appear explicitly in the above, but ultimately cannot be separated from the noise.
 
-HOGG: probabilistic interpretation of chi-squared, and then probabilistic interpretation of IRLS in this context; is there one?
-TOM: Yes, see below, especially final section of Appendix~\ref{sec:proof} where I mention some generalisation stuff. If the part about hierarchical latent variances is unclear let me know and I can expand it.
+We then make the following assumptions:
+\begin{enumerate}
+    \item \textbf{Unreliable measurement uncertainties}: The data $y_{ij}$ have known, and approximately Gaussian measurement uncertainties $\sigma_{ij}$, although these may not all be \emph{representative} in that some $y_{ij}$ may be outliers or have underestimated $\sigma_{ij}$.
+    \item \textbf{Heteroskedasticity}: The measurement uncertainties $\sigma_{ij}$ may vary for different $i,j$.
+    \item \textbf{Uniform data grid}: For fixed pixel index $j$, pixel values across all spectra $i$ correspond to the same wavelength. [TOM: although one could just have shift operators?]
+    \item \textbf{Missing data}: Spectra may be missing values at particular $j$ are handled with vanishing weights by setting the $w_{ij}=0$ at for each missing $y_{ij}$, equivalent to infinitely large measurement uncertainties $\sigma_{ij}\rightarrow\infty$.
+    \item \textbf{Basis orthogonality}: The inferred basis vectors, and so the rows of $G$, will be strictly orthogonal and ordered by explained variance, similarly to principal component analysis. The rank of the model is restricted to $1 \le K \le N$.
+\end{enumerate}
 
-\paragraph{Training:}
-Training of this model proceeds by alternating least squares with IRLS mixed in.
-Before starting the optimization, the coefficients $a_{ik}$ and components $g_{kj}$ are initialized with a singular-value decomposition (SVD) of the data:
+\subsection{Probabilistic view}
+
+Such a model as above, and also for PCA/HMF, are usually inferred by minimizing the $\chi^2$ metric or equivalently a Gaussian likelihood
 \begin{align}
-    [Y]_{ij} &= y_{ij} \\
-    U\,S\,V &= \svd(Y) \\
-    a_{ik} &\leftarrow [U]_{ik}\,[S]_{kk} \\
-    g_{ik} &\leftarrow [V]_{kj} ~,
+    \hat{\bf A}, \hat{\bf G} &= \argmin_{{\bf A},{\bf G}} \left[\sum_{ij} w_{ij}\left(y_{ij} - \sum_k a_{ik} g_{kj} \right)^2\right], \\
+    {\rm or \,\, equivalently} \quad y_{ij} &\sim {\rm Normal} \left( \sum_k a_{ik} g_{kj}, \sigma^2_{ij}\right),
 \end{align}
-where $Y$ is the rectangular data matrix,
-and the operator $\svd()$ takes the standard singular-value decomposition with $U, V$ unitary and $S$ diagonal.
-This initialization is not great, because the data are filled with missing values and the SVD has no understanding of that.
+where the notation on the second line denotes that each $y_{ij}$ is \emph{drawn from} a Normal distribution with mean $a_{ik} g_{kj}$ and variance $\sigma_{ij}^2$.
+This induces a quadratic penalty in the residuals $r_{ij} = y_{ij} - \sum_k a_{ik}g_{kj}$, which causes outliers to have a large influence on the fit.
 
-After initialization, the steps in the optimization schedule are the following:
-The \textbf{a-step} finds best-fit values for the coefficients $a_{ij}$ given the current guess of the eigenvector components $g_{kj}$:
+We instead replace the likelihood with a heavy-tailed distribution, which results in a sub-quadratic penalty in the residuals.
+Here, we choose Student's t-distribution, but there is a large literature on heavy-tailed distributions for robust inference [TOM cite some of that here], and our method is generalizable to any of those.
+Thus, we replace the above with\footnote{Note that strictly there is a $\nu s^2/2$ prefactor for the full negative log-likelihood. Also for Hogg, your $Q=\nu s^2$.}
 \begin{align}
-    a_i &\leftarrow \solve(A_i, b_i) \label{eq:a-step} \\
-    [A_i]_{kk'} &= \sum_{j=1}^M g_{kj}\,w_{ij}\,g_{k'j} \\
-    [b_i]_k     &= \sum_{j=1}^M g_{kj}\,w_{ij}\,y_{ij} ~,
+    \hat{\bf A}, \hat{\bf G} &= \argmin_{\bf A, G} \left[ \sum_{ij} \log\left(1 + \frac{w_{ij} r_{ij}^2}{\nu s^2}\right) \right], \label{eq:robust_opt} \\
+    {\rm or \,\, equivalently} \quad y_{ij} &\sim {\rm StudentT}_\nu \left( \sum_k a_{ik} g_{kj}, s^2 \sigma_{ij}^2 \right) \label{eq:t_like}
 \end{align}
-where $a_i$ is a $K$-vector of coefficients,
-the operator $\solve(A, b)$ returns $A^{-1}\,b$,
-$A_i$ is a $K\times K$ matrix with entries $[A_j]_{kk'}$,
-and $b_i$ is a $K$-vector with components $[b_i]_k$.
+where the number of degrees of freedom $\nu\in\mathbb{Z}^+$ and the scale $s$ are hyperparameters.
+In the limit $\nu \rightarrow \infty$ with $s=1$ this converges to the Normal likelihood we had before.
+We will discuss how to choose $\nu$ and $s$ in a later section [TOM return to this and add a link or fix].
 
-The \textbf{g-step} finds best-fit values for the eigenvector components $g_{kj}$
+This setup can be equivalently viewed as a hierarchical model with latent, unknown variances $\tau_{ij}^2$
 \begin{align}
-    g_j &\leftarrow \solve(A_j, b_j) \label{eq:g-step} \\
-    [A_j]_{kk'} &= \sum_{i=1}^N a_{ik}\,w_{ij}\,a_{ik'} \\
-    [b_j]_k     &= \sum_{i=1}^N a_{ik}\,w_{ij}\,y_{ij} ~,
+    y_{ij} &\sim {\rm Normal} \left( \sum_k a_{ik} g_{kj}, \tau_{ij}^2 \right), \label{eq:hierachical_like} \\
+    \tau_{ij} &\sim {\rm InverseGamma} \left( \frac{\nu}{2}, \frac{\nu}{2} s^2 \sigma_{ij}^2 \right) \label{eq:hierarchical_prior}
 \end{align}
-where $g_j$ is a $K$-vector of eigenvector components,
-$A_j$ is a $K\times K$ matrix with entries $[A_j]_{kk'}$,
-and $b_j$ is a $K$-vector with components $[b_j]_k$.
+where the Inverse Gamma distribution is a strictly positive distribution, here with \emph{shape} $\frac{\nu}{2}$ and \emph{scale} $\frac{\nu}{2} s^2 \sigma_{ij}^2$.
+Both the shape and scale control the location of the mode, while the scale mostly controls the support for larger values.
+$s$ corresponds to a global scale for the confidence in our beliefs about our provided uncertainties, and in practice it will control how pessimistically we treat large residuals during fitting.
+Very small values $s\ll0$ correspond to very high confidence in the measurement uncertainties and no outliers, $s=1$ has mostly correct measurement uncertainties, and larger values $s>1$ have very low confidence.
 
-This model has a huge set of degeneracies:
-The $a_{ik}$ can be multiplied by a factor, and the $g_{kj}$ can be divided by that same factor.
-The orientation of the eigenvectors $g_k$ can be rotated and the coefficients $a_{ik}$ can be de-rotated.
-In practice, to break some (but not all) of these degeneracies, after each iteration of the a-step and the g-step,
-an SVD is performed on the low-rank matrix
-to rotate and rescale the $g_k$ axes back to a standard orientation in the data space.
-This looks like the following:
+The equivalence between the student-t likelihood and the hierarchical view is due to the fact that the Inverse Gamma distribution is the conjugate prior distribution of an unknown Gaussian variance; marginalizing $t_{ij}$ from Eq.~\eqref{eq:hierachical_like} with Eq.~\eqref{eq:hierarchical_prior} yields Eq.~\eqref{eq:t_like}.
+
+For the fitting methods we will present here $s$ and $\nu$ are not uniquely identifiable.
+This is because our estimates are either maximum likelihood in the Student-t view, or type-II maximum likelihood (empirical Bayes) in the hierarchical view.
+The fit instead depends only on the product $Q=\nu s^2$, which we show in Appendix~\ref{sec:proof}.
+
+\subsection{Fitting}
+
+While in principle it's possible to optimize Eq.~\eqref{eq:robust_opt} for all $a_{ik}$ and $g_{kj}$, we can instead invoke a majorization-maximization scheme that instead implicitly minimizes the objective by iterating between re-weighting and least-squares solves.
+This type of algorithm is known as iteratively-reweighted least squares (IRLS), and is commonly used in robust regression settings [CITE].
+We prove the equivalence between the maximum likelihood and IRLS approaches in Appendix~\ref{sec:proof}.
+
+\subsubsection{Initialization}
+
+In either case, we must provide a sensible initialization, since there will be in general very many local optima.
+The most straightforward approach is the singular-value decomposition
 \begin{align}
-    [L]_{ij} &= \sum_{k=1}^K a_{ik}\,g_{kj} \\
-    U\,S\,V &= \svd(L) \\
-    a_{ik} &\leftarrow [U]_{ik}\,[S]_{kk} \\
-    g_{ik} &\leftarrow [V]_{kj} ~,
+    \left[{\bf Y}\right]_{ij} &= y_{ij}, \\
+    {\bf U} {\bf S} {\bf V}^\top &= \svd{\left({\bf Y}\right)}, \\
+    a_{ik} &\leftarrow \left[{\bf S}\right]_{kk}^{1/2} [{\bf U}]_{ik}, \\
+    g_{kj} &\leftarrow \left[{\bf S}\right]_{kk}^{1/2} [{\bf V}^\top]_{kj},
 \end{align}
-similar to the SVD-based initialization described above, but now acting on the low-rank model rather than the data.
-Importantly this operation does not change the model predictions \emph{at all}; it just re-scales, re-orients, and re-orders the eigenvectors.
+where ${\bf U}$ and ${\bf V}^\top$ are unitary matrices, and {\bf S} is a matrix with diagonal entries equal to the singular values of ${\bf Y}$ in non-decreasing order, and zeros elsewhere.
 
-The \textbf{w-step} updates the weights $w_{ij}$ for robustness [TOM: actually, I think for the equivalence with the objective, the $w^\text{(in)}_{ij}$ should not be the original input weights but those from the previous step. Maybe this is what is meant here anyway?]:
+TODO: note about what to do if ${\bf Y}$ is massive?
+
+\subsubsection{Iterative solver}
+
+The algorithm consists of 4 steps iterated in turn until convergence.
+First, let $Q=\nu s^2$. [TOM: oh damn I just realized the MLE for Student t with $\nu$ and $s^2$ is equivalent to the Cauchy MLE with $s^2\leftarrow \nu s^2$]
+These are as follows.
+
+The \textbf{w-step} updates the data weights to downweight outliers, given the current best guess of ${\bf A}$ and ${\bf G}$:
 \begin{align}
-    w_{ij} &\leftarrow w^\text{(in)}_{ij}\,\frac{Q^2}{w^\text{(in)}_{ij}\,\Delta_{ij}^2 + Q^2} \label{eq:w-step} \\
-    \Delta_{ij} &= y_{ij} - \sum_{k=1}^K a_{ik}\,g_{kj} ~,
+    w^{\rm total}_{ij} &\leftarrow w^{\rm data}_{ij} w^{\rm robust}_{ij}, \\
+    w^{\rm robust}_{ij} & = \frac{Q^2}{Q^2 + w_{ij}^{\rm data} r_{ij}^2}, \label{eq:w_robust} \\
+    r_{ij} &= y_{ij} - \sum_K a_{ik} g_{kj},
 \end{align}
-where the $w^\text{(in)}_{ij}$ are the original input (investigator-specified) data weights,
-$Q$ is the dimensionless soft outlier threshold,
-and $\Delta_{ij}$ is the residual of the (current best-fit) model at datum $y_{ij}$
-This formula \eqref{eq:w-step} looks magical but it's just a zero-safe version of a standard iteratively reweighted least squares method \cite{irls}.
-As the residual $\Delta_{ij}$ gets very large, $w_{ij}$ approaches $Q^2 / \Delta_{ij}^2$;
-as the residual gets small, $w_{ij}\approx w^\text{(in)}_{ij}$.
-Note that this weight adjustment only makes sense if the weights have units that are the inverse square of the data units.
+where we note that $w^{\rm robust}_{ij} \in (0, 1]$ provides a per-data-point measure of outlier-y-ness, and that $w_{ij}^{\rm total} = \tau_{ij}^{-2}$.
+This rule also respects data weights of zero, and gives interpretability to $Q$ in that it is a dimensionless soft outlier threshold that sets the degree to which large weighted residuals cause downweighting.
 
-The a-step, g-step, SVD reorientation, and w-step are iterated to convergence.
-Convergence is judged by a dimensionless estimate of the size of the g-step adjustment.
-The output of training is the full, converged, $N\times K$ matrix $A$ of coefficients $a_{ik}$ and the full, converged, $K\times M$ matrix $G$ of components $g_{kj}$.
-
-\subsection{Objective}
-
-In the previous section, the method was described as an algorithm.
-It turns out that the method can also be described as a maximum likelihood estimator with a heavy-tailed noise model.
-Without the w-step, the method is just HMF \cite{hmf}, which is a maximum likelihood estimator under a Gaussian likelihood.
-The objective function is the chi-squared statistic, proportional to the negative log-likelihood:
+The \textbf{a-step} finds the best-fit values for the coefficients $a_{ik}$ given the current estimate of the basis vectors $g_{kj}$:
 \begin{align}
-    r_{ij} = \frac{y_{ij} - a_i^\top g_j}{\sigma_{ij}}, \qquad 
-    \chi^2(A,G) = \sum_{ij} r_{ij}^2
+    a_{ik} &\leftarrow [{\boldsymbol{\alpha}}_i]_k \quad {\rm for} \,\, i \,\, {\rm in} \,\, 1,...,N, \\
+    \boldsymbol{\alpha}_i &= \solve{\left( {\bf X}_i, {\bf b}_i \right)}, \\
+    % {\bf X}_i &= {\bf G} {\bf W}_i {\bf G}^\top \\
+    [{\bf X}_i]_{kk'} &= \sum_{j=1}^M g_{kj} w_{ij} g_{jk'}, \\
+    % {\bf b} &= {\bf G} {\bf W}_i {\bf y}_i \\
+    [{\bf b}_i]_k &= \sum_{j=1}^M g_{kj} w_{ij} y_{ij},
+    % {\bf G} {\bf W}_i
 \end{align}
-This objective is bilinear in $(A,G)$ so solvable with alternating least squares, as described above.
-However, the quadratic penalty makes this setup very fragile when there are outliers or anomalies in the data.
-% By fragile, we mean that the delivered components $g_k$ can be dominated by a few outliers, and the delivered coefficients $a_i$ can be dominated by a few outlier pixels.
-% This results in a poor representation, and poor predictions.
+where the operator $\solve({\bf X}, {\bf b})$ returns ${\bf X}^{-1}\,{\bf b}$.
+This is just the weighted least-squares (WLS) solution for the rows of ${\bf Y}$ given fixed ${\bf G}$.
 
-To combat this fragility, we added robustness via the w-step.
-In the context of maximum likelihood estimation, we can instead (equivalently) think of replacing the Gaussian likelihood with a heavy-tailed likelihood, resulting in a sub-quadratic penalty for large residuals, down-weighting their influence.
-Choosing a Cauchy likelihood, the negative log-likelihood is proportional to our new objective function
+The \textbf{g-step} finds the best-fit basis vectors $g_{kj}$ given the current estimate of the coefficients $a_{ik}$:
 \begin{align}
-    L(A,G) &= \sum_{ij} \frac{Q^2}{2} \log\!\left(1 + \left(\frac{r_{ij}}{Q}\right)^2\right),
+    g_{kj} &\leftarrow [\boldsymbol{\gamma}_j]_k \quad {\rm for} \,\, j \,\, {\rm in} \,\, 1,...,M, \\
+    \boldsymbol{\gamma}_j &= \solve{\left( {\bf X}_j, {\bf b}_j \right)}, \\
+    [{\bf X}_j]_{kk'} &= \sum_{i=1}^N a_{ik} w_{ij} a_{ik'}, \\
+    [{\bf b}_j]_k &= \sum_{i=1}^N a_{ik} w_{ij} y_{ij},
 \end{align}
-where $Q$ is the same dimensionless soft outlier threshold as above.
-For small residuals $r_{ij}\ll Q$, the penalty is still roughly quadratic, while for large residuals $r_{ij}\gg Q$, the penalty is roughly logarithmic.
-In Appendix~\ref{sec:proof}, we show that including the w-step described above is exactly equivalent to minimizing this objective function.
+which is just the WLS solution for the columns of ${\bf Y}$ given fixed ${\bf A}$.
 
-This objective function is no longer bilinear in $(A,G)$, but it is still biconvex, in that it is convex in $A$ for fixed $G$ and convex in $G$ for fixed $A$.
-The existence of the objective means however that we are not actually forced to do the w-step and optimise the latent weights $w_{ij}$.
-We could instead directly optimise the objective with modern gradient-based optimizers like Adam or L-BFGS.
-This would be particularly attractive for very large data where the matrices get huge and the ALS becomes expensive, slow, and memory intensive.
-In this case, we could use mini-batches stochastic gradient descent to simultaneously optimize $A$ and $G$.
-It would be pertinent to include a good reorientation step every $\sim10$-$100$ iterations in this case, due to the degeneracies mentioned above.
-[TOM: I actually don't know (yet) of a good reorientation steps here that works well for mini-batches and avoids instantiating big matrices. I'm sure something exists but I haven't looked yet.]
+The \textbf{rotation} suppresses the huge set of degeneracies in the model by enforcing a standard orientation in either data or feature space. Here, we will require that the basis vectors be orthonormal:
+\begin{align}
+    {\bf A} &\leftarrow {\bf A} {\bf V} \, {\rm diag} \left(\boldsymbol{\lambda}^{-1}\right) {\bf V}^\top, \\
+    {\bf G} &\leftarrow {\bf V} \, {\rm diag} \left(\boldsymbol{\lambda}\right) {\bf V}^\top {\bf G}, \\
+    % {\bf R^{-1}} &=  \\
+    % {\bf R} &= 
+    \boldsymbol{\lambda}, {\bf V} &= \eig{\left( {\bf G} {\bf G}^\top \right)},
+\end{align}
+where the operator ${\rm eig}({\bf G} {\bf G}^\top)$ returns a $K$-vector and a $K\times K$ matrix, containing the eigenvalues and eigenvectors of ${\bf G} {\bf G}^\top$ respectively.
+$\boldsymbol{\lambda}^{-1}$ is shorthand for the element-wise reciprocal of the eigenvalues vector $\boldsymbol{\lambda}$.
+Note that here the eigendecomposition is guaranteed to be performed on a real and symmetric matrix, and so allows for slightly faster numerical routines than the general case.
 
+\textbf{Convergence} is assessed every few cycles by a dimensionless estimate of the size of the g-step adjustment.
+The output of the procedure is the full matrices ${\bf A}$ and ${\bf G}$.
+The robust weights $w^{\rm robust}_{ij}$ for any data point are also calculable by Eq~\eqref{eq:w_robust}.
 
-\paragraph{Test time:}
+% This iterative scheme is appropriate in the small to medium data settings, as it has complexity $\mathcal{O} (TODO)$ and memory cost $\mathcal{O} (TODO)$ due to dense matrix solves using ${\bf A}$ and ${\bf G}$.
+
+% \subsubsection{Joint optimization}
+
+% We now return to the possibility of jointly optimizing ${\bf A}$ and ${\bf G}$, which is desirable in the large data case where $N$, $M$ or both are of order millions or greater.
+% In this case, the IRLS method scales to poorly and requires too large memory to be tractable even on modern graphics or tensor processing units.
+% While we have not explored this possibility in depth, we briefly outline here what we find to work well and places for future research.
+
+% We implemented direct optimization of the object Eq~\eqref{eq:robust_opt} with \texttt{JAX}, with the following steps:
+% \begin{enumerate}
+%     \item Jointly optimize ${\bf A}$ and ${\bf G}$ for $N_{\rm cadence}$ iterations.
+%     \item Perform a rotation step.
+% \end{enumerate}
+% We found that the \texttt{AdaFactor} optimizer and $N_{\rm cadence}$ of around 10 to 20 performed best in our experiments.
+% Empirically, this procedure also takes many more steps to converge than the IRLS scheme, and we found that assessing convergence with the relative change in ${\bf G}$ as in the IRLS setup often lead to early exiting.
+% This can be tuned by hand to either require a smaller fraction change, or to be assess over more steps, but since the rate at which ${\bf G}$ changes is non-constant during the optimization, we found it more consistent to assess convergence by the fractional change in the objective function.
+
+% A possibility we did not explore is to use mini-batching.
+% [TOM not sure whether to write about this or not. Maybe I should if I add it to Robusta, and not if I don't?]
+
+% \subsection{Objective}
+
+% In the previous section, the method was described as an algorithm.
+% It turns out that the method can also be described as a maximum likelihood estimator with a heavy-tailed noise model.
+% Without the w-step, the method is just HMF \cite{hmf}, which is a maximum likelihood estimator under a Gaussian likelihood.
+% The objective function is the chi-squared statistic, proportional to the negative log-likelihood:
+% \begin{align}
+%     r_{ij} = \frac{y_{ij} - a_i^\top g_j}{\sigma_{ij}}, \qquad 
+%     \chi^2(A,G) = \sum_{ij} r_{ij}^2
+% \end{align}
+% This objective is bilinear in $(A,G)$ so solvable with alternating least squares, as described above.
+% However, the quadratic penalty makes this setup very fragile when there are outliers or anomalies in the data.
+% % By fragile, we mean that the delivered components $g_k$ can be dominated by a few outliers, and the delivered coefficients $a_i$ can be dominated by a few outlier pixels.
+% % This results in a poor representation, and poor predictions.
+
+% To combat this fragility, we added robustness via the w-step.
+% In the context of maximum likelihood estimation, we can instead (equivalently) think of replacing the Gaussian likelihood with a heavy-tailed likelihood, resulting in a sub-quadratic penalty for large residuals, down-weighting their influence and robust-ifying against outliers.
+% Choosing a Cauchy likelihood, the negative log-likelihood is proportional to our new objective function
+% \begin{align}
+%     L(A,G) &= \sum_{ij} \frac{Q^2}{2} \log\!\left(1 + \left(\frac{r_{ij}}{Q}\right)^2\right),
+% \end{align}
+% where $Q$ is the same dimensionless soft outlier threshold as above.
+% For small residuals $r_{ij}\ll Q$, the penalty is still roughly quadratic, while for large residuals $r_{ij}\gg Q$, the penalty is roughly logarithmic.
+% In Appendix~\ref{sec:proof}, we show that including the w-step described above is exactly equivalent to minimizing this objective function.
+
+% This objective function is no longer bilinear in $(A,G)$, but it is still biconvex, in that it is convex in $A$ for fixed $G$ and convex in $G$ for fixed $A$.
+% The existence of the objective means however that we are not actually forced to do the w-step and optimise the latent weights $w_{ij}$.
+% We could instead directly optimise the objective with modern gradient-based optimizers like Adam or L-BFGS.
+% This would be particularly attractive for very large data where the matrices get huge and the ALS becomes expensive, slow, and memory intensive.
+% In this case, we could use mini-batches stochastic gradient descent to simultaneously optimize $A$ and $G$.
+% It would be pertinent to include a good reorientation step every $\sim10$-$100$ iterations in this case, due to the degeneracies mentioned above.
+% [TOM: I actually don't know (yet) of a good reorientation steps here that works well for mini-batches and avoids instantiating big matrices. I'm sure something exists but I haven't looked yet.]
+
+\subsubsection{Validation and hyperparameter choice}
+
 At test time, a new data object $y_\ast$ with $M$ pixel values $y_{\ast j}$ is introduced, with associated weights $w_{\ast j}$, including probably some missing data with vanishing weights.
 The a-step and w-step are iterated on this object to convergence, keeping all the components $g_{kj}$ fixed.
 Convergence is judged by a dimensionless estimate of the size of the a-step adjustment.
 The output of test time is $K$ converged coefficients $a_{\ast k}$, or equivalently the low-rank representation $\sum_k a_{\ast k}\,g_{kj}$.
 
-\paragraph{Implementation notes}
-Trimming down under-observed objects and wavelengths?
-Working on residuals not data?
-Actually output synthetic data not a values?
+We use this held-out data validation approach to select appropriate robust scale $Q$ and rank $K$.
+This involves partitioning the data randomly between a training and a test set.
+The following metric should then be calculated using the test set data $y_{*j}$, the fitted coefficients $a_{*k}$, the basis vectors $g_{kj}$, and the total weights $w^{\rm total}_{*j}$ calculated with the w-step rule using the test set measurement uncertainties $w^{\rm data}_{*j}$,
+\begin{align}
+    {\rm score} \, (Q, K) = {\rm log} \left( 1 - {\rm std} \left[ \sqrt{w^{\rm total}_{*j}}\left(y_{*j} - \sum_K a_{*k} g_{kj}\right) \right] \right). \label{eq:score}
+\end{align}
 
-HOGG: The fastness at training time depends on jax \cite{jax}.
-The fastness at test time depends on parallelization.
-Currently the parallelization isn't correct; need to batch it maybe to reduce shared-memory overheads?
+This might seem arcane at first, but it essentially just tests the degree to which after fitting, the data follow the distribution given by the likelihood Eq~\eqref{eq:hierachical_like}, using the residuals weighted by the inferred weights.
+That is, we expect the data to be normally distributed with standard deviation equal to the inferred weights $\tau_{*j}=(w_{*j}^{\rm total})^{-1/2}$, and we test the degree to which the fit results in a distribution with that width.
 
-This method does not [HOGG THINKS] optimize a scalar objective; it is \emph{an algorithm}.
-Therefore, it can't just be put into standard ML form and optimized by contemporary optimization methods like CJ, BFGS, or Adam.
-[HOGG thinks??]
-[TOM: I think we can remove this now.]
+I think Hogg is also going to advocate for splitting into two groups and testing the consistency between the predictions of actual observables for each model?
+I don't think you can test consistency for inferred coefficients because it's not a bug that the bases don't have to come out identical even if ``correct'', right?
+
+\subsubsection{Row- and column-level outlier quantification}
+
+[Tom to rename section something more explanatory]
+
+While the inferred weights on either the training or test sets $w^{\rm total}_{ij}$ give a per-pixel-per-spectrum level view of outlier-y-ness, we can also assemble simple metrics to assess the level to which we should consider individual observations $i$, or cross-object pixel-grid features $j$ as outliers.
+We can do this as
+\begin{align}
+    w^{\rm spectrum}_i &= \frac{1}{M}\sum_{j=1}^M w_{ij}, \\
+    w^{\rm pixel}_j &= \frac{1}{N}\sum_{i=1}^N w_{ij},
+\end{align}
+where the former has more obvious utility, and the latter may be used to look for consistently problematic pixels across objects from the instrument or data reduction.
+
+These weights should be calculated for all spectra or all pixels, and the resultant distribution over weights informs the confidence with which one can conclude a particular spectrum is outlying.
+In Section~\ref{sec:toy} we show that for a carefully chosen $K$, and data containing true spectra-level outliers, the distribution of weights will consist of two separate modes for each the outliers and the not outliers (? how to say).
+
+\section{Implementation}
+
+\texttt{Robusta-HMF} in \texttt{JAX} blah blah.
+It's open source and easy to use, you should use it.
+
+\section{Data experiments}
+
+\subsection{Toy} \label{sec:toy}
+
+We generated 4000 toy spectra with 1200 pixels on the same wavelength grid, from a linear sum of a few polynomials and a low- and fixed-frequency sinusoid to represent continuum, as well as a set of absorption lines present in all the spectra.
+This means the true underlying model is linear and has a rank of around 5 depending on how orthogonal the components are.
+We added Gaussian noise with a standard deviation that is proportional to a random factor across spectra, a systematic factor across wavelength, and with a random additive factor per pixel.
+We assume that we know these noise scales exactly as our measurement uncertainties.
+We also randomly added bad pixels with null values and zero weights, representing \emph{known} bad pixels [TOM: didn't do this yet].
+
+In addition to this, we injected multiple types of outliers to test the models ability to distinguish each.
+First, we injected 20 [for now] outlier spectra which consist of only a high frequency sinusoid with a randomly drawn frequency and amplitude in some range.
+We injected outlier columns, we at a fixed pixel index we injected random large (or very negative) values in a random 30\% of all the spectra, intended to represent some systematic reduction, calibration, or instrument issue.
+We also inject individual bad pixels at completely random locations, consisting of a fixed 0.1\% of all pixels in the data.
+Unlike the bad pixels mentioned in the preceding paragraph, we did \emph{not} set the corresponding measurement weights to zero as these are to represent \emph{unknown} bad pixels or pixel-level outliers.
+Finally, in 10 [for now] spectra we injected 3 additional absorption lines at random wavelength locations with random amplitudes, to test the model's ability to distinguish outliers that cover a few adjacent pixels in individual spectra.
+
+[TOM: I guess I should add all the details of what what distributions the random draws were from in an appendix.]
+
+We fit the model over a grid of 4 potential values of $Q\in\left\{ 0.5, 1, 2, 3\right\}$ and 5 different ranks $K\in\left\{ 3, 4, 5, 6, 7\right\}$ for a total of 20 possibilities.
+In each, we fit to the same random subset of 3500 spectra and held-out the other 500 for validation purposes.
+
+Figure~\ref{fig:toy_spectra} shows 5 random spectra from the training set, along with the predictions from the best-fit model with $K=5$ and $Q=3$.
+[Tom: Maybe I should show fits to the test set instead?]
+The model clearly picks up on the structure that is common to all of the spectra like the lines and the continuum structure, but ignores individual bad pixels.
+
+\begin{figure}
+    \centering
+    \includegraphics[width=0.98\linewidth]{documents/figs/spectra_and_reconstructions.pdf}
+    \caption{Synthetic noisy and corrupted spectra shown with their best-fits from $K=5$, $Q=3$. The fit ignores all of the outlier pixels.}
+    \label{fig:toy_spectra}
+\end{figure}
+
+Figure~\ref{fig:toy_outliers} shows 5 random outlier spectra from the training set, along with the model predictions.
+We see that the predictions do not look like the data here, which is the intent.
+The model does not spend basis vectors trying to explain these data that do not having any shared low-rank structure amoungest themselves or the rest of the spectra.
+[Tom: I picked sinusoids of differing periods here because I knew that would prevent a ``family'' of outliers with shared linear structure that get a basis vector. Is this too optimistic?]
+The spectra will have very large weighted residuals with respect to the input data weights $w_{ij}^{\rm data}$, but still be approximately normally distributed as according to the \emph{total} weights $w_{ij}^{\rm total}$.
+[Tom: maybe would be a nice plot if we don't have too many.]
+
+\begin{figure}
+    \centering
+    \includegraphics[width=0.98\linewidth]{documents/figs/weird_outlier_spectra_and_reconstructions.pdf}
+    \caption{The outlier spectra and their reconstructions from the model. The model clearly does not fit these well at all, since they do not have any shared low-rank structure with either one-another or the other non-outlier spectra.}
+    \label{fig:toy_outliers}
+\end{figure}
+
+Figure~\ref{fig:toy_basis} shows the inferred basis functions from the model.
+The don't really match onto the basis used to make the synthetic data, but they surely span approximately the same subspace.
+In this case these aren't really interpretable, but extension to include labels, or causal structure, could help that.
+
+\begin{figure}
+    \centering
+    \includegraphics[width=0.98\linewidth]{documents/figs/basis_functions.pdf}
+    \caption{The fitted basis. Clearly did not separate out nicely into a constant + straight line + quadratic + lines + sinusoid, but those things might not be perfectly orthogonal anyway. [TOM: this plot looks better for real data?]}
+    \label{fig:toy_basis}
+\end{figure}
+
+Figure~\ref{fig:toy_line_residuals} demonstrates a mock of a real scientific use-case, which is identifying rare emission/absorption lines.
+The plot shows the data-weighted residuals, looking mostly flat apart from 5 sharp peaks.
+Three of these peaks correspond to locations where outlier bad pixels where injected, indicated with the green shading.
+The other two peaks correspond to multiple pixels where absorption lines where present only in this spectrum, indicated by the orange bands.
+This makes them very easy to identify by eye after subtracting the model.
+
+\begin{figure}
+    \centering
+    \includegraphics[width=0.98\linewidth]{documents/figs/absorption_line_residuals.pdf}
+    \caption{Model-subtracted (actually model - data whoops) spectrum with injected outlier absorption lines indicated by the orange bands. The particular lines are present only in this spectrum and so treated as outliers by the model. This makes them easy to identify in residuals. The green bands indicate where bad pixels were injected, showing that the model also ignores those.}
+    \label{fig:toy_line_residuals}
+\end{figure}
+
+Figure~\ref{fig:toy_weights_hist} shows the distribution of the robust weights $w_{ij}^{\rm robust}$ which give some notion of how much a likely a data point $y_{ij}$ is to be an outlier.
+The histograms are coloured by their true known origin; blue for untouched pixels that are just the true model plus accurately characterized noise, orange for pixels in the outlier high-frequency-sinusoid spectra, green for unflagged bad pixels, red for bad pixels in the same location across spectra (so a bad ``column'' in ${\bf Y}$), and in purple the outlier absorption lines like those in Figure~\ref{fig:toy_line_residuals}.
+We see that the model clearly distinguishes these populations, with the clean pixels clustered toward $w_{ij}^{\rm robust} \approx 1$, and the outliers mostly clustered around $w_{ij}^{\rm robust}\approx 0$, although there is a reasonable tail of outliers that read toward larger weight values.
+
+\begin{figure}
+    \centering
+    \includegraphics[width=0.98\linewidth]{documents/figs/robust_weights_histogram.pdf}
+    \caption{Histogram of all robust weights $w_{\rm ij}$, grouped by whether the associated data point was an injected outlier or ``clean``, and if an outlier what kind. [TOM: probably should update it such that they are side-by-side rather than overlaid.]}
+    \label{fig:toy_weights_hist}
+\end{figure}
+
+Figure~\ref{fig:toy_validation} shows the validation scores calculated with Eq~\eqref{eq:score}
+
+\begin{figure}
+    \centering
+    \includegraphics[width=0.7\linewidth]{documents/figs/test_set_score_heatmap.pdf}
+    \caption{Validation scores based on performance on held-out data. Performance is assessed by metric described in text. Smaller numbers are better, and $K$ should be chosen conservatively in that if the score does not improve much one should not chose a larger $K$.}
+    \label{fig:toy_validation}
+\end{figure}
+
+\subsection{Hot Stars}
+
+Next, we will use the method to investigate hot stars in the SDSS-V BOSS spectra.
+We limited our selection to consider only spectra with a signal-to-noise ratio above 29, and I think only spectra from Milky Way Mapper?
+We selected only spectra that share a common wavelength grid.
+Additionally, we cut spectrally to include only data between 370 nm and 1030 nm.
+
+We floored the flux measurement uncertainties at 1\%, assuming that uncertainties less than this are not unphysical.
+Hogg then did some other magic floor and ceiling-ing that Tom does not immediately understand.
+
+We then selected [TODO] spectra pseudorandomly [TODO describe] from the much larger set that satisfies our criterion.
+These spectra were then randomly split into two groups of equal size called A and B.
+
+
+
+
+\begin{figure}
+    \centering
+    \includegraphics[width=1.0\linewidth]{documents/figs/emitter_1.06_104050-60365-63050395137793830.png}
+    \caption{Star with very strong \ion{He}{ii} in the residual.}
+    \label{fig:placeholder}
+\end{figure}
+
+\subsection{Gaia RVS}
+
+\section{Discussion}
+
+The useful-ness of the robustness of the model is two-fold, one can either learn what to ignore, or what to investigate.
+We showed in our toy example that this approach does not suffer the issue of outliers spoiling the eigenvectors.
+We do this without any ad-hoc sigma-clipping, instead taking a purely data-driven approach with a probabilistic interpretation, in that we are marginalizing over our ignorance about the true uncertainties by using the measurement uncertainties as a prior.
+We also provide relaxed assumptions about the noise distribution, and bad pixels do not ruin rectangularity.
+
+Validation metric cannot be prediction performance on held-out data because there simply is not enough information.
+We could always score better by increasing $K$.
+It's also complicated by the fact that we are deliberately fitting a subset of the data poorly because we believe they are outliers.
+And worse, we don't know what is truly an outlier nor how to ignore it for the sake of quantifying prediction quality.
+
+We can circumvent this problem by doing something Bayesian-ish, because our optimized total variances $\tau_{ij}$, $\tau_{*j}$ have actually performed implicit marginalization.
+[Tom to think about this more carefully but] this effectively gives us some posterior-ish information in terms of a predictive distribution type thing.
+The metric we propose in this paper leverages this by simply comparing the distribution of z-scores obtained with our inferred weights from that which the likelihood predicts.
 
 \appendix
 
+% \section{Proof of objective} \label{sec:proof}
+
+% [TOM: I used an LLM to generalize to Student-t from Cauchy, I should check carefully]
+
+% \subsection{Student's t Likelihood as Hierarchical Model}
+
+% We adopt a Student's t likelihood, which can be viewed as a hierarchical model with latent variances. For observation $y_{ij}$ with reported measurement uncertainty $\sigma_{ij}$, define $Q^2 = \nu s^2$ where $\nu$ is the degrees of freedom and $s$ is a global scale parameter. The hierarchical model is:
+
+% \begin{align}
+%     y_{ij} \mid \mu_{ij}, \tau_{ij}^2 &\sim \mathcal{N}(\mu_{ij}, \tau_{ij}^2) \\
+%     \tau_{ij}^2 \mid Q, \sigma_{ij} &\sim \text{InverseGamma}\left(\frac{\nu}{2}, \frac{Q^2 \sigma_{ij}^2}{2}\right) \\
+%     \implies y_{ij} \mid \mu_{ij}, Q, \sigma_{ij} &\sim t_\nu(\mu_{ij}, Q^2 \sigma_{ij}^2/\nu)
+% \end{align}
+
+% where the inverse gamma prior is centered at $Q^2 \sigma_{ij}^2/\nu$, allowing the true variance to deviate from the reported measurement variance. The parameter $Q^2$ controls both the prior center and the robustness of the likelihood.
+
+% Marginalizing over $\tau_{ij}^2$ yields the Student's t likelihood. The negative log-likelihood is:
+
+% \begin{equation}
+%     L(A,G) = \frac{Q^2}{2} \sum_{ij} \log\left(1 + \frac{r_{ij}^2}{Q^2}\right),
+% \end{equation}
+
+% where $r_{ij} = (y_{ij} - \mu_{ij})/\sigma_{ij}$ is the normalized residual and $\mu_{ij} = a_i^\top g_j$ is the model prediction.
+
+% \subsection{Auxiliary Form}
+
+% \textbf{Claim:} The loss can be expressed for any $r$ in the following way
+% \begin{equation}
+%     \rho(r) = \min_{0<w\leq1} \left[ \tfrac{1}{2} w r^2 + \phi(w) \right],
+% \end{equation}
+% where
+% \begin{equation}
+%     \phi(w) = \frac{Q^2}{2}\,(w - 1 - \log w).
+% \end{equation}
+
+% \textbf{Proof:} Define
+% \begin{align}
+%     J\left( w ; r \right) &= \tfrac{1}{2} w r^2 + \tfrac{Q^2}{2} \left( w - 1 - \log{w}\right)
+% \end{align}
+
+% Differentiating with respect to $w$:
+% \begin{equation}
+%     \frac{\partial J}{\partial w} 
+%     = \tfrac{1}{2}r^2 + \frac{Q^2}{2}\left(1 - \frac{1}{w}\right),
+% \end{equation}
+% and
+% \begin{align}
+%     \frac{\partial^2 J}{\partial w^2} = \frac{Q^2}{2} \frac{1}{w^2} > 0, \qquad \forall \, Q, w > 0.
+% \end{align}
+
+% Thus the critical point minimizes $J$. Setting $\partial_w J=0$ yields
+% \begin{align}
+%     \hat{w}(r) &= {\rm argmin}_w \, J (w ; r) \\
+%     &= \frac{Q^2}{Q^2 + r^2},
+% \end{align}
+% and note that $\hat{w} \in (0, 1]$ because $r^2 \geq 0$.
+
+% To verify the claim, set $t = r^2/Q^2 \geq 0$, then
+% \begin{equation}
+%     \hat{w} = \frac{1}{1+t}, \qquad r^2 = Q^2 t,
+% \end{equation}
+% such that
+% \begin{align}
+%     J (\hat{w} ; r) &= \tfrac{1}{2} \hat{w} r^2 + \phi(\hat{w}).
+% \end{align}
+
+% Substituting and simplifying:
+% \begin{align}
+%     \tfrac{1}{2} \hat{w} r^2 &= \frac{Q^2}{2} \frac{t}{1 + t} \\
+%     \phi(\hat{w}) &= \frac{Q^2}{2} \left( \hat{w} - 1 - \log{\hat{w}} \right) \\
+%     &= \frac{Q^2}{2} \left( -\frac{t}{1 + t} + \log(1 + t) \right) \\
+%     \Rightarrow J (\hat{w} ; r) &= \frac{Q^2}{2} \log{\left( 1 + \frac{r^2}{Q^2} \right)}.
+% \end{align}
+
+% Thus
+% \begin{align}
+%     \rho(r) &= J ( \hat{w} ; r ) \\
+%     &= \min_{0<w\leq1} \left[ \tfrac{1}{2} w r^2 + \phi(w) \right],
+% \end{align}
+% as claimed. Note that $\rho(r)$ equals the negative log-likelihood up to an additive constant.
+
+% \subsection{Three-Step Algorithm}
+
+% Define the auxiliary objective:
+% \begin{equation}
+%     J(A,G,W) = \frac{1}{2}\sum_{ij} \left[ w_{ij} r_{ij}^2 + \phi(w_{ij}) \right],
+% \end{equation}
+% with $r_{ij} = (Y_{ij} - a_i^\top g_j)/\sigma_{ij}$ the normalized residual.
+
+% By construction,
+% \begin{equation}
+%     L(A,G) = \min_W J(A,G,W),
+% \end{equation}
+% and if
+% \begin{align}
+%     \hat{W} &= {\rm argmin}_W \, J(A, G, W),
+% \end{align}
+% then
+% \begin{align}
+%     \left[ \hat{W} \right]_{ij} &= \hat{w} (r_{ij}) \\
+%     &= \frac{Q^2}{Q^2 + r_{ij}^2}.
+% \end{align}
+
+% This immediately yields an iteratively reweighted least squares (IRLS) procedure:
+% \begin{align*}
+%     \text{w-step:} \quad & w_{ij} \leftarrow \frac{Q^2}{Q^2 + r_{ij}^2}, \\
+%     \text{a-step:} \quad & \text{solve WLS for $A$ with weights $W$}, \\
+%     \text{g-step:} \quad & \text{solve WLS for $G$ with weights $W$},
+% \end{align*}
+% where the a-step optimizes the quadratic
+% \begin{align}
+%     Q(A \, | \, G, W) &= \frac{1}{2} \sum_{ij} w_{ij} r_{ij}^2,
+% \end{align}
+% and the g-step optimizes $Q(G \, | \, A, W)$.
+
+% The IRLS weights combine with the measurement precision weights: the effective weight for observation $ij$ is $W_{\text{eff}, ij} = w_{ij}/\sigma_{ij}^2$. This procedure computes the maximum likelihood estimate under the Student's t likelihood with $Q^2 = \nu s^2$. The special case $\nu = 1$ (hence $Q = s$) recovers the Cauchy distribution.
+
+% \subsection{Convergence Proof}
+
+% Consider one outer cycle starting at $(A^{(t)}, G^{(t)})$.  
+% Choose $W^{(t)} = \hat{w}(r(A^{(t)},G^{(t)}))$.  
+% Then
+% \begin{equation}
+%     L(A^{(t)}, G^{(t)}) = J(A^{(t)}, G^{(t)}, W^{(t)}).
+% \end{equation}
+
+% With frozen $W^{(t)}$, the a- and g-steps minimize $Q(\cdot \,| \,W^{(t)})$.
+% Since our total objective is $J = Q + \sum_{ij} \phi(w_{ij}^{(t)})$, this implies
+% \begin{equation}    
+%     J(A^{(t+1)}, G^{(t+1)}, W^{(t)}) \le J(A^{(t)}, G^{(t)}, W^{(t)}).
+% \end{equation}
+
+% Setting
+% \begin{align}
+%     W^{(t+1)} = \hat{w} \left( r(A^{(t+1)}, G^{(t+1)}) \right),
+% \end{align}
+% and using our result from the previous section gives
+% \begin{equation}
+%     J(A^{(t+1)}, G^{(t+1)}, W^{(t+1)}) \le J(A^{(t+1)}, G^{(t+1)}, W^{(t)}).
+% \end{equation}
+
+% Thus chaining the inequalities and using $L(A,G) = \min_W J(A, G, W)$ gives
+% \begin{equation}
+%     L(A^{(t+1)}, G^{(t+1)}) \le L(A^{(t)}, G^{(t)}).
+% \end{equation}
+
+% This guarantees that the IRLS procedure converges to a local minimum of the Student's t negative log-likelihood.
+
 \section{Proof of objective} \label{sec:proof}
+
+[TOM: update now that I am using Student-t not Cauchy.]
 
 \subsection{Auxiliary Form}
 
@@ -339,18 +734,19 @@ Thus chaining the inequalities and $L(A,G) = \min_W J(A, G, W)$ gives
 \end{equation}
 This is enough to guarantee that robust HMF with Hogg's w-step converges to the Cauchy MLE.
 
-\subsection{Generalisation}
+% \subsection{Generalisation}
 
-This procedure can be generalised to other likelihoods, their associated $\rho(r)$ functions, and their associated $\phi(w)$ functions.
-The only requirement is that the $\rho(r)$ function can be expressed in the auxiliary form above, such that the update rule can be derived.
-This will be generally true for any $\rho(r)$ that is symmetric, monotonically increasing in $|r|$, and sub-quadratic [TOM THINKS].
-It might be worth actually writing down this whole thing in terms of student's t-distribution, which is a generalisation of both the Cauchy and Gaussian distributions.
-Student's t-distribution also comes with the nice interpretation of marginalising out an unknown variance with a inverse Gamma prior, where actually the update rule is the posterior mean of the variance given the data and the prior, such that the $w_{ij}$ weights are latent inverse variances in a now hierarchical model with a Gaussian likelihood \cite{things}.
-Of course, the choices here already have this interpretation, because the Cauchy is a student's t with one degree of freedom, and so the latent variance has an inverse Gamma prior with one degree of freedom.
-[TOM: as is this is under-explained and under-developed, but I think it's a good idea. I find the idea that the weights are latent variances in a hierarchical model appealing, since we can still interpret the method as having a Gaussian likelihood, just with unknown variances that we marginalise out (with a inverse Gamma prior on the variances or Gamma on the precisions). This \emph{feels} more natural that just saying we have a Cauchy likelihood (I don't expect the data to actually be Cauchy distributed), but this is just interpretation in the end anyway.]
+% This procedure can be generalised to other likelihoods, their associated $\rho(r)$ functions, and their associated $\phi(w)$ functions.
+% The only requirement is that the $\rho(r)$ function can be expressed in the auxiliary form above, such that the update rule can be derived.
+% This will be generally true for any $\rho(r)$ that is symmetric, monotonically increasing in $|r|$, and sub-quadratic [TOM THINKS].
+% It might be worth actually writing down this whole thing in terms of student's t-distribution, which is a generalisation of both the Cauchy and Gaussian distributions.
+% Student's t-distribution also comes with the nice interpretation of marginalising out an unknown variance with a inverse Gamma prior, where actually the update rule is the posterior mean of the variance given the data and the prior, such that the $w_{ij}$ weights are latent inverse variances in a now hierarchical model with a Gaussian likelihood \cite{things}.
+% Of course, the choices here already have this interpretation, because the Cauchy is a student's t with one degree of freedom, and so the latent variance has an inverse Gamma prior with one degree of freedom.
+% [TOM: as is this is under-explained and under-developed, but I think it's a good idea. I find the idea that the weights are latent variances in a hierarchical model appealing, since we can still interpret the method as having a Gaussian likelihood, just with unknown variances that we marginalise out (with a inverse Gamma prior on the variances or Gamma on the precisions). This \emph{feels} more natural that just saying we have a Cauchy likelihood (I don't expect the data to actually be Cauchy distributed), but this is just interpretation in the end anyway.]
 
 \raggedright\footnotesize
 \bibliographystyle{plain}
 \bibliography{rhmf}
 
 \end{document}
+    
