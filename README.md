@@ -1,8 +1,11 @@
 # SpectralAnomalies
 *experimenting with a robust version of HMF*
 
-## Author
+Note that the code & paper for this project now live at https://github.com/TomHilder/robusta-hmf/tree/main
+
+## Authors
 - **David W. Hogg** (NYU) (MPIA) (Flatiron)
+- **Thomas Hilder** (Monash)
 
 ## License
 All content copyright 2025 the author.
